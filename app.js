@@ -1,5 +1,5 @@
 const API = '/api';
-const WA_NUM = '9779840661406';
+const WA_NUM = '9705985657';
 
 // ── AUTH STATE ────────────────────────────────────────────────────────────────
 let currentUser = null;
@@ -377,7 +377,7 @@ function renderQRStep1() {
   const overlay = document.getElementById('modal-overlay');
   const content = document.getElementById('modal-content');
   const product = qrPaymentProduct;
-  const esewaId = '9840661406';
+  const esewaId = '9705985657';
   const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=esewa%3A${esewaId}%3Famount%3D${product.price}`;
   content.innerHTML = `
     <div style="text-align:center;margin-bottom:20px">

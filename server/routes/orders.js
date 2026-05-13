@@ -7,7 +7,7 @@ const Order = require('../models/Order');
 const Product = require('../models/Product');
 const User = require('../models/User');
 
-const WA_NUMBER = '9779840661406';
+const WA_NUMBER = '9779705985657';
 
 // User: place order
 router.post('/', auth, async (req, res) => {

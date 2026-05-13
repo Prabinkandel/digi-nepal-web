@@ -333,7 +333,7 @@ function renderOrderRows(orders){
         <select class="filter-select" style="padding:5px 8px;font-size:.8rem" data-oid="${o.id}" onchange="updateOrderStatus(this,'${o.id}')">
           ${['pending','verified','rejected','delivered'].map(s=>`<option value="${s}" ${o.status===s?'selected':''}>${s}</option>`).join('')}
         </select>
-        <a href="https://wa.me/9779840661406?text=${encodeURIComponent(o.wa_message||'')}" target="_blank" class="btn-success btn-sm">WA</a>
+        <a href="https://wa.me/9779705985657?text=${encodeURIComponent(o.wa_message||'')}" target="_blank" class="btn-success btn-sm">WA</a>
       </div></td>
     </tr>`).join('');
 }
