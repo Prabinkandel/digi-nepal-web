@@ -197,17 +197,18 @@ let allProducts = [], allCategories = [], globalSettings = {};
 
 async function loadData() {
   try {
-    const [cats, prods, sets] = await Promise.all([
+    const [cats, prods, sets] = await Promise.allSettled([
       apiFetch('/categories'),
       apiFetch('/products'),
       apiFetch('/settings')
     ]);
-    allCategories = cats;
-    allProducts = prods;
-    globalSettings = sets;
-  } catch {
-    // Fallback to static data if server not running
-    console.warn('Server not running – using static data');
+    allCategories = cats.status === 'fulfilled' ? cats.value : [];
+    allProducts = prods.status === 'fulfilled' ? prods.value : [];
+    globalSettings = sets.status === 'fulfilled' ? sets.value : {};
+    
+    if (allProducts.length === 0) throw new Error('No products found');
+  } catch (err) {
+    console.error('API Error:', err);
     loadStaticData();
     return;
   }
@@ -575,17 +576,23 @@ function renderCategories() {
 
 // ── STATIC DATA FALLBACK ──────────────────────────────────────────────────────
 function loadStaticData() {
-  // minimal fallback notice
   document.getElementById('category-sections').innerHTML = `
-    <div class="container" style="text-align:center;padding:60px 0">
-      <div style="font-size:3rem;margin-bottom:16px">⚠️</div>
-      <h2 style="font-weight:700;margin-bottom:8px">Server Not Running</h2>
-      <p style="color:var(--text2);margin-bottom:24px">Start the backend server to load products and enable ordering.</p>
-      <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;display:inline-block;text-align:left;font-family:monospace;font-size:.9rem">
-        <div style="color:var(--text3);margin-bottom:8px"># Install and start server:</div>
-        <div style="color:var(--cyan)">cd c:\\antigravity\\server</div>
-        <div style="color:var(--cyan)">npm install</div>
-        <div style="color:var(--cyan)">node server.js</div>
+    <div class="container" style="text-align:center;padding:100px 20px">
+      <div style="font-size:4rem;margin-bottom:24px">🔌</div>
+      <h2 style="font-weight:700;margin-bottom:12px;font-size:2rem">Connecting to Database...</h2>
+      <p style="color:var(--text2);margin-bottom:32px;max-width:500px;margin-left:auto;margin-right:auto;line-height:1.6">
+        We're having trouble reaching our database. This usually happens if the server is starting up or if there's a configuration issue.
+      </p>
+      <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:16px;padding:24px;display:inline-block;text-align:left;max-width:100%">
+        <p style="color:var(--text3);margin-bottom:12px;font-weight:600">Troubleshooting for Admin:</p>
+        <ul style="color:var(--text2);font-size:.9rem;list-style:none;padding:0;display:flex;flex-direction:column;gap:10px">
+          <li>✅ Ensure <strong>MONGO_URI</strong> is set in Vercel.</li>
+          <li>✅ Check <strong>Deployment Logs</strong> in Vercel dashboard.</li>
+          <li>✅ Ensure your IP is whitelisted in <strong>MongoDB Atlas</strong> (allow access from anywhere).</li>
+        </ul>
+      </div>
+      <div style="margin-top:40px">
+        <button onclick="location.reload()" class="btn-primary">Try Refreshing Page</button>
       </div>
     </div>`;
 }
