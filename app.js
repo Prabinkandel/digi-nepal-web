@@ -302,7 +302,7 @@ function createProductCard(product) {
       <button class="btn-card btn-card-wish" aria-label="Wishlist">♡</button>
     </div>`;
   card.addEventListener('click', e => { if (!e.target.classList.contains('btn-card')) openProductModal(product, features); });
-  card.querySelector('.btn-card-buy').addEventListener('click', e => { e.stopPropagation(); placeOrder(product.id); });
+  card.querySelector('.btn-card-buy').addEventListener('click', e => { e.stopPropagation(); openProductModal(product, features); });
   card.querySelector('.btn-card-wish').addEventListener('click', e => {
     e.stopPropagation();
     const b = e.target; b.textContent = b.textContent === '♡' ? '♥' : '♡';
