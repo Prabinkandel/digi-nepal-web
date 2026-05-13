@@ -83,7 +83,7 @@ router.put('/:id/status', adminAuth, async (req, res) => {
       if (user && ['verified', 'rejected'].includes(status)) {
         const emoji = status === 'verified' ? '✅' : '❌';
         sendMail({
-          from: '"ToolsVault Payments" <no-reply@toolsvault.com>',
+          from: '"Digi Nepal Payments" <no-reply@diginepal.com>',
           to: user.email,
           subject: `${emoji} Payment ${status.toUpperCase()}: ${payment.product_name}`,
           html: `<h2>${emoji} Payment ${status.charAt(0).toUpperCase() + status.slice(1)}</h2>
@@ -91,7 +91,7 @@ router.put('/:id/status', adminAuth, async (req, res) => {
                  <p>Your payment of <strong>Rs ${Number(payment.amount).toLocaleString()}</strong> for <strong>${payment.product_name}</strong> has been <b>${status}</b>.</p>
                  <p>Transaction ID: <code>${payment.transaction_id}</code></p>
                  ${admin_note ? `<p>Note from admin: ${admin_note}</p>` : ''}
-                 <p>${status === 'verified' ? 'Your order will be processed shortly. Thank you for shopping with ToolsVault!' : 'Please contact us on WhatsApp if you believe this is a mistake.'}</p>`
+                 <p>${status === 'verified' ? 'Your order will be processed shortly. Thank you for shopping with Digi Nepal!' : 'Please contact us on WhatsApp if you believe this is a mistake.'}</p>`
         }).catch(err => console.error('Payment email error:', err));
       }
     }

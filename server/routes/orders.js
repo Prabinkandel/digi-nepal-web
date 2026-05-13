@@ -38,7 +38,7 @@ router.post('/', auth, async (req, res) => {
     });
     
     sendMail({
-      from: '"ToolsVault Orders" <no-reply@toolsvault.com>',
+      from: '"Digi Nepal Orders" <no-reply@diginepal.com>',
       to: user.email,
       subject: `Order Received: ${product.name}`,
       html: `<h2>Order Received!</h2>
@@ -103,14 +103,14 @@ router.put('/:id/status', adminAuth, async (req, res) => {
       const user = await User.findOne({ id: updatedOrder.user_id });
       if (user && user.email && ['verified', 'delivered'].includes(status)) {
         sendMail({
-          from: '"ToolsVault Orders" <no-reply@toolsvault.com>',
+          from: '"Digi Nepal Orders" <no-reply@diginepal.com>',
           to: user.email,
           subject: `Order ${status.toUpperCase()}: ${updatedOrder.product_name}`,
           html: `<h2>Order ${status.charAt(0).toUpperCase() + status.slice(1)}</h2>
                  <p>Hi ${user.name}, your order for <strong>${updatedOrder.product_name}</strong> has been marked as <b>${status}</b>.</p>
                  <p>Order ID: ${updatedOrder.id.split('-')[0].toUpperCase()}</p>
                  ${note ? `<p>Note from admin: ${note}</p>` : ''}
-                 <p>Thank you for shopping with ToolsVault!</p>`
+                 <p>Thank you for shopping with Digi Nepal!</p>`
         }).catch(err => console.error('Failed to send status update email:', err));
       }
     }

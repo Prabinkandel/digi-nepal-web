@@ -28,11 +28,11 @@ router.post('/register', async (req, res) => {
     await Otp.create({ email: lowerEmail, code: otpCode, expires_at: expiresAt });
 
     await sendMail({
-      from: '"ToolsVault Security" <no-reply@toolsvault.com>',
+      from: '"Digi Nepal Security" <no-reply@diginepal.com>',
       to: email,
-      subject: 'Your ToolsVault Verification Code',
+      subject: 'Your Digi Nepal Verification Code',
       text: `Hello ${name},\n\nYour verification code is: ${otpCode}\n\nThis code will expire in 10 minutes.`,
-      html: `<h2>Welcome to ToolsVault!</h2><p>Hello ${name},</p><p>Your verification code is: <b style="font-size:24px;color:#3b82f6;">${otpCode}</b></p><p>This code will expire in 10 minutes.</p>`
+      html: `<h2>Welcome to Digi Nepal!</h2><p>Hello ${name},</p><p>Your verification code is: <b style="font-size:24px;color:#3b82f6;">${otpCode}</b></p><p>This code will expire in 10 minutes.</p>`
     });
     res.json({ requires_otp: true, message: 'OTP sent to email' });
   } catch (err) {
