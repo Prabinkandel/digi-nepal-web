@@ -1,4 +1,4 @@
-const API = 'http://localhost:3001/api';
+const API = '/api';
 const WA_NUM = '9779840661406';
 
 // ── AUTH STATE ────────────────────────────────────────────────────────────────
@@ -280,7 +280,7 @@ function getBadgeLabel(b) { return b === 'sale' ? '🔥 Flash Sale' : b === 'pop
 function createProductCard(product) {
   const icon = product.category_icon || '📦';
   const imgHTML = product.image_url
-    ? `<img src="${product.image_url.startsWith('/') ? 'http://localhost:3001' + product.image_url : product.image_url}" alt="${product.name}" class="card-img"/>`
+    ? `<img src="${product.image_url}" alt="${product.name}" class="card-img"/>`
     : `<div class="card-icon">${icon}</div>`;
   const card = document.createElement('div');
   card.className = 'product-card';
@@ -317,7 +317,7 @@ function openProductModal(product, features) {
   const content = document.getElementById('modal-content');
   const feats = features || (typeof product.features === 'string' ? JSON.parse(product.features || '[]') : (product.features || []));
   const imgHTML = product.image_url
-    ? `<img src="${product.image_url.startsWith('/') ? 'http://localhost:3001' + product.image_url : product.image_url}" alt="${product.name}" style="width:80px;height:80px;object-fit:cover;border-radius:14px;margin-bottom:16px;border:1px solid var(--border)"/>`
+    ? `<img src="${product.image_url}" alt="${product.name}" style="width:80px;height:80px;object-fit:cover;border-radius:14px;margin-bottom:16px;border:1px solid var(--border)"/>`
     : `<div class="modal-product-icon">${product.category_icon || '📦'}</div>`;
   content.innerHTML = `
     ${imgHTML}
@@ -492,7 +492,7 @@ function renderQRStep2() {
         const res = await fetch(API + '/upload', { method: 'POST', headers, body: fd });
         const d = await res.json();
         if (!res.ok) throw new Error(d.error || 'Upload failed');
-        screenshotUrl = 'http://localhost:3001' + d.url;
+        screenshotUrl = d.url;
       } catch (uploadErr) {
         errEl.textContent = 'Screenshot upload failed: ' + uploadErr.message; errEl.style.display = 'block';
         btn.disabled = false; btn.textContent = '📤 Submit Payment Proof'; return;

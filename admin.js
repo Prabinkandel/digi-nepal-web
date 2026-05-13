@@ -1,4 +1,4 @@
-const API='http://localhost:3001/api';
+const API='/api';
 let token=localStorage.getItem('tv_token'),adminUser=null;
 
 const $=id=>document.getElementById(id);
@@ -148,7 +148,7 @@ function renderProductRows(products,catMap){
   return products.map(p=>`
     <tr data-id="${p.id}">
       <td><div style="display:flex;align-items:center;gap:10px">
-        ${p.image_url?`<img src="http://localhost:3001${p.image_url}" class="td-img" alt=""/>`:`<div class="td-icon">${p.category_icon||'📦'}</div>`}
+        ${p.image_url?`<img src="${p.image_url}" class="td-img" alt=""/>`:`<div class="td-icon">${p.category_icon||'📦'}</div>`}
         <div><div class="td-name">${p.name}</div><div class="td-sub">${fmt(p.price)}</div></div>
       </div></td>
       <td>${catMap[p.category_id]?.name||'-'}</td>
@@ -204,7 +204,7 @@ function openProductForm(p,cats){
         <input type="file" id="f-img-file" accept="image/*" style="display:none"/>
       </div>
       <div class="upload-preview" id="upload-preview">
-        ${p?.image_url?`<img src="http://localhost:3001${p.image_url}" alt=""/><span style="font-size:.82rem;color:var(--text3)">Current image</span>`:''}
+        ${p?.image_url?`<img src="${p.image_url}" alt=""/><span style="font-size:.82rem;color:var(--text3)">Current image</span>`:''}
       </div>
       <input type="hidden" id="f-img-url" value="${p?.image_url||''}"/>
     </div>
