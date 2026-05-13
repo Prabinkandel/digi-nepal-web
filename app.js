@@ -193,14 +193,18 @@ async function handleAuthSubmit(e) {
 }
 
 // ── DATA ──────────────────────────────────────────────────────────────────────
-let allProducts = [], allCategories = [];
+let allProducts = [], allCategories = [], globalSettings = {};
 
 async function loadData() {
   try {
-    [allCategories, allProducts] = await Promise.all([
+    const [cats, prods, sets] = await Promise.all([
       apiFetch('/categories'),
-      apiFetch('/products')
+      apiFetch('/products'),
+      apiFetch('/settings')
     ]);
+    allCategories = cats;
+    allProducts = prods;
+    globalSettings = sets;
   } catch {
     // Fallback to static data if server not running
     console.warn('Server not running – using static data');
@@ -378,7 +382,7 @@ function renderQRStep1() {
   const content = document.getElementById('modal-content');
   const product = qrPaymentProduct;
   const esewaId = '9705985657';
-  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=esewa%3A${esewaId}%3Famount%3D${product.price}`;
+  const qrUrl = globalSettings.payment_qr_url || `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=esewa%3A${esewaId}%3Famount%3D${product.price}`;
   content.innerHTML = `
     <div style="text-align:center;margin-bottom:20px">
       <div style="font-size:2rem;margin-bottom:8px">📱</div>

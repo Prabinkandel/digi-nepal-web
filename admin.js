@@ -67,10 +67,10 @@ document.querySelectorAll('.nav-item').forEach(a=>{
   });
 });
 
-const pageTitles={dashboard:'Dashboard',products:'Products',categories:'Categories',orders:'Orders',offers:'Flash Offers',payments:'Payments',users:'Users'};
+const pageTitles={dashboard:'Dashboard',products:'Products',categories:'Categories',orders:'Orders',offers:'Flash Offers',payments:'Payments',users:'Users',settings:'Settings'};
 function navigate(page){
   $('page-title').textContent=pageTitles[page]||page;
-  const pages={dashboard:renderDashboard,products:renderProducts,categories:renderCategories,orders:renderOrders,offers:renderOffers,payments:renderPayments,users:renderUsers};
+  const pages={dashboard:renderDashboard,products:renderProducts,categories:renderCategories,orders:renderOrders,offers:renderOffers,payments:renderPayments,users:renderUsers,settings:renderSettings};
   if(pages[page])pages[page]();
 }
 
@@ -483,6 +483,55 @@ window.promoteUser=function(id,name){
     await api(`/users/${id}/promote`,{method:'PUT'});toast('User promoted to admin');renderUsers();
   });
 };
+
+// SETTINGS
+async function renderSettings(){
+  $('page-content').innerHTML=`<div style="color:var(--text3);text-align:center;padding:40px">Loading...</div>`;
+  try{
+    const settings=await api('/settings');
+    $('page-content').innerHTML=`
+      <div class="table-wrap" style="max-width:600px;margin:0 auto;padding:30px">
+        <h3 style="margin-bottom:20px">Global Payment Settings</h3>
+        <div class="form-group">
+          <label>Payment QR Code (FonePay / eSewa / Khalti)</label>
+          <div class="upload-zone" id="qr-upload-zone" style="height:200px">
+            <p>Click to upload new QR Image</p>
+            <input type="file" id="qr-file" accept="image/*" style="display:none"/>
+          </div>
+          <div id="qr-preview" style="margin-top:20px;text-align:center">
+            ${settings.payment_qr_url ? `<img src="${settings.payment_qr_url}" style="max-width:200px;border-radius:10px;border:1px solid var(--border)"/>` : '<p style="color:var(--text3)">No custom QR uploaded. Using default generator.</p>'}
+          </div>
+        </div>
+        <button class="btn-primary full" id="save-qr-btn" style="margin-top:20px">Save Settings</button>
+      </div>`;
+    
+    $('qr-upload-zone').onclick=()=>$('qr-file').click();
+    $('qr-file').onchange=e=>{
+      const f=e.target.files[0]; if(!f)return;
+      $('qr-preview').innerHTML=`<img src="${URL.createObjectURL(f)}" style="max-width:200px;border-radius:10px;border:1px solid var(--border)"/><p style="font-size:.8rem;color:var(--success);margin-top:8px">Ready to upload: ${f.name}</p>`;
+    };
+
+    $('save-qr-btn').onclick=async()=>{
+      const f=$('qr-file').files[0];
+      if(!f && !settings.payment_qr_url) return toast('Please select a file','error');
+      
+      const btn=$('save-qr-btn'); btn.disabled=true; btn.textContent='Saving...';
+      try{
+        let url=settings.payment_qr_url;
+        if(f){
+          const fd=new FormData(); fd.append('image',f);
+          const h={}; if(token)h['Authorization']=`Bearer ${token}`;
+          const r=await fetch(API+'/upload',{method:'POST',headers:h,body:fd});
+          const d=await r.json();
+          if(!r.ok) throw new Error(d.error);
+          url=d.url;
+        }
+        await api('/settings',{method:'POST',body:JSON.stringify({key:'payment_qr_url',value:url})});
+        toast('Settings saved!'); renderSettings();
+      }catch(err){toast(err.message,'error'); btn.disabled=false; btn.textContent='Save Settings';}
+    };
+  }catch(e){$('page-content').innerHTML=`<div style="color:var(--sale);padding:20px">${e.message}</div>`;}
+}
 
 // INIT
 (async()=>{

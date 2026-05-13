@@ -29,6 +29,7 @@ app.use('/api/offers',     require('./routes/offers'));
 app.use('/api/upload',     require('./routes/upload'));
 app.use('/api/users',      require('./routes/users'));
 app.use('/api/payments',   require('./routes/payments'));
+app.use('/api/settings',   require('./routes/settings'));
 
 // ── SPA FALLBACK ──────────────────────────────────────────────────────────────
 app.get('/admin', (req, res) => res.sendFile(path.join(__dirname, '../admin.html')));
