@@ -59,7 +59,7 @@ function renderAuthBar() {
     document.getElementById('ud-logout').addEventListener('click', e => { e.preventDefault(); logout(); });
     document.getElementById('ud-orders').addEventListener('click', e => { e.preventDefault(); showMyOrders(); });
   } else {
-    wrap.innerHTML = `<button class="btn-ghost" id="nav-login-btn" style="padding:8px 16px;font-size:.9rem">Login</button><a href="#" class="btn-primary nav-cta" id="nav-register-btn">Get Deals</a>`;
+    wrap.innerHTML = `<button class="btn-ghost" id="nav-login-btn" style="padding:8px 16px;font-size:.9rem">Login</button><a href="#" class="btn-primary nav-cta" id="nav-register-btn">Signup</a>`;
     actions.prepend(wrap);
     document.getElementById('nav-login-btn').addEventListener('click', () => openAuthModal('login'));
     document.getElementById('nav-register-btn').addEventListener('click', e => { e.preventDefault(); openAuthModal('register'); });
