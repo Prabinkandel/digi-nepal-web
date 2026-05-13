@@ -37,10 +37,10 @@ app.get('*', (req, res) => res.sendFile(path.join(__dirname, '../index.html')));
 // ── START ─────────────────────────────────────────────────────────────────────
 if (require.main === module) {
   app.listen(PORT, () => {
-    console.log(`\n🚀 ToolsVault server running at http://localhost:${PORT}`);
+    console.log(`\n🚀 Digi Nepal server running at http://localhost:${PORT}`);
     console.log(`📦 API endpoints at http://localhost:${PORT}/api`);
     console.log(`🖥️  Admin panel at http://localhost:${PORT}/admin`);
-    console.log(`\n👤 Admin login: admin@toolsvault.com / admin123\n`);
+    console.log(`\n👤 Admin login: admin@diginepal.com / admin123\n`);
   });
 }
 

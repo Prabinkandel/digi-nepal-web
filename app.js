@@ -155,7 +155,7 @@ async function handleAuthSubmit(e) {
       authToken = data.token; currentUser = data.user;
       localStorage.setItem('tv_token', authToken);
       closeModal(); renderAuthBar();
-      showToast(`Welcome to ToolsVault, ${currentUser.name}! 🎉`, 'success');
+      showToast(`Welcome to Digi Nepal, ${currentUser.name}! 🎉`, 'success');
       if (pendingProductId) { const pid = pendingProductId; pendingProductId = null; placeOrder(pid); }
     } catch (err) {
       errEl.textContent = err.message; errEl.hidden = false;

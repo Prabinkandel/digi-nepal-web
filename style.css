@@ -33,6 +33,7 @@ img{max-width:100%;display:block}
 .brand{display:flex;align-items:center;gap:10px;font-weight:800;font-size:1.3rem;letter-spacing:-0.5px}
 .brand-icon{font-size:1.4rem}
 .brand-name{background:linear-gradient(135deg,var(--blue-light),var(--cyan));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.brand-logo-img{width:32px;height:32px;border-radius:50%;object-fit:cover;border:2px solid var(--border-hover)}
 .nav-links{display:flex;align-items:center;gap:4px;margin-left:auto}
 .nav-link{padding:8px 16px;border-radius:8px;font-size:.9rem;font-weight:500;color:var(--text2);transition:var(--transition)}
 .nav-link:hover{color:var(--text);background:var(--surface2)}
