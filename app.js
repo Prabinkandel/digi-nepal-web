@@ -699,3 +699,69 @@ window.addEventListener('scroll', () => {
 // ── INIT ──────────────────────────────────────────────────────────────────────
 initAuth().then(() => loadData());
 
+// ── INFO POPUPS ─────────────────────────────────────────────────────────────
+const INFO_CONTENT = {
+  about: {
+    title: 'About Digi Nepal',
+    body: `<p>Digi Nepal is Nepal's leading digital marketplace for premium subscriptions and software activation keys. Founded in 2021, we have served over 25,000 customers across the country.</p>
+           <p>Our mission is to provide access to premium digital tools at prices that are affordable for everyone in Nepal. We guarantee 100% genuine products and 24/7 customer support.</p>`
+  },
+  delivery: {
+    title: 'About Delivery',
+    body: `<p>We offer <strong>Instant Digital Delivery</strong>. As soon as your payment is verified, your activation key or account credentials will be sent directly to your registered email address.</p>
+           <p>Delivery time typically ranges from 2 minutes to 1 hour, depending on the product and payment verification status.</p>`
+  },
+  reviews: {
+    title: 'Customer Reviews',
+    body: `<p>We take pride in our 4.9/5 star rating. Check out what our customers say in the "Reviews" section on the homepage, or visit our Facebook page to see hundreds of verified testimonials from users across Nepal.</p>`
+  },
+  privacy: {
+    title: 'Privacy Policy',
+    body: `<p>At Digi Nepal, your privacy is our priority. We only collect the necessary information (Name, Email, Phone) to process your orders and provide support.</p>
+           <p>We never share your personal data with third parties. All payment information is handled through secure, encrypted Nepali payment gateways.</p>`
+  },
+  refund: {
+    title: 'Refund Policy',
+    body: `<p>We offer a 100% money-back guarantee if the key or subscription provided does not work as described. Refund requests must be made within 48 hours of purchase.</p>
+           <p>Please note that refunds are not available for "change of mind" after the digital product has been delivered and viewed.</p>`
+  },
+  terms: {
+    title: 'Terms of Use',
+    body: `<p>By using Digi Nepal, you agree to our terms of service. Our products are intended for personal or professional use as specified. Sharing account credentials provided by us may result in account termination without refund.</p>`
+  },
+  payment: {
+    title: 'Payment Issues',
+    body: `<p>If your payment was successful but you haven't received your order, please wait 15 minutes and check your Spam folder. If it's still missing, contact us via WhatsApp with your screenshot of payment.</p>`
+  },
+  contact: {
+    title: 'Contact Us',
+    body: `<p><strong>WhatsApp Support:</strong> +977 9705985657</p>
+           <p><strong>Email:</strong> support@diginepal.com</p>
+           <p><strong>Hours:</strong> 24/7 Support Available</p>`
+  },
+  partnership: {
+    title: 'Partnership & Reselling',
+    body: `<p>Interested in reselling our products or becoming a partner? We offer special bulk pricing for resellers and local computer shops. Contact us on WhatsApp for our partnership program details.</p>`
+  }
+};
+
+document.addEventListener('click', e => {
+  const link = e.target.closest('.info-link');
+  if (link) {
+    const type = link.dataset.type;
+    const content = INFO_CONTENT[type];
+    if (content) {
+      const modalBody = document.getElementById('modal-content');
+      modalBody.innerHTML = `
+        <h2 style="margin-bottom:20px; font-weight:800; color:var(--blue-light)">${content.title}</h2>
+        <div style="line-height:1.7; color:var(--text2); font-size:1rem">${content.body}</div>
+        <button class="btn-primary" onclick="closeModal()" style="margin-top:30px; width:100%">Close</button>
+      `;
+      const overlay = document.getElementById('modal-overlay');
+      overlay.classList.add('open');
+      overlay.setAttribute('aria-hidden', 'false');
+      document.body.style.overflow = 'hidden';
+    }
+  }
+});
+
