@@ -8,9 +8,17 @@ async function api(path,opts={}){
   const h={'Content-Type':'application/json'};
   if(token)h['Authorization']=`Bearer ${token}`;
   const r=await fetch(API+path,{...opts,headers:{...h,...(opts.headers||{})}});
-  const d=await r.json();
-  if(!r.ok)throw new Error(d.error||'Error');
-  return d;
+  
+  const contentType = r.headers.get('content-type');
+  if (contentType && contentType.includes('application/json')) {
+    const d = await r.json();
+    if(!r.ok) throw new Error(d.error || 'Error');
+    return d;
+  } else {
+    const text = await r.text();
+    if (!r.ok) throw new Error(`Server Error (${r.status}): ${text.substring(0, 50)}...`);
+    return text;
+  }
 }
 
 function toast(msg,type='success'){

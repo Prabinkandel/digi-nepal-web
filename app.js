@@ -9,9 +9,17 @@ async function apiFetch(path, opts = {}) {
   const headers = { 'Content-Type': 'application/json' };
   if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
   const res = await fetch(API + path, { ...opts, headers: { ...headers, ...opts.headers } });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Request failed');
-  return data;
+  
+  const contentType = res.headers.get('content-type');
+  if (contentType && contentType.includes('application/json')) {
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Request failed');
+    return data;
+  } else {
+    const text = await res.text();
+    if (!res.ok) throw new Error(`Server Error: ${text.substring(0, 40)}...`);
+    return text;
+  }
 }
 
 async function initAuth() {
