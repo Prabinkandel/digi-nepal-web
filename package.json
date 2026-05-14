@@ -17,6 +17,7 @@
     "multer": "^1.4.5-lts.1",
     "nodemailer": "^8.0.7",
     "uuid": "^9.0.1",
-    "@anthropic-ai/sdk": "^0.20.9"
+    "@anthropic-ai/sdk": "^0.20.9",
+    "cloudinary": "^2.2.0"
   }
 }
