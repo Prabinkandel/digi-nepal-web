@@ -10,38 +10,52 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET
 });
 
-// Use memory storage for Vercel compatibility
+// Use memory storage for Vercel & Base64 compatibility
 const storage = multer.memoryStorage();
 const upload = multer({ 
   storage,
-  limits: { fileSize: 5 * 1024 * 1024 }
+  limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
 });
 
 router.post('/', adminAuth, upload.single('image'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
-    // Check if Cloudinary is configured
+    // 1. Try Cloudinary if configured
     if (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY) {
-      const b64 = Buffer.from(req.file.buffer).toString('base64');
-      let dataURI = 'data:' + req.file.mimetype + ';base64,' + b64;
-      
-      const result = await cloudinary.uploader.upload(dataURI, {
-        resource_type: 'auto',
-        folder: 'digi-nepal'
-      });
-      
-      return res.json({ 
-        url: result.secure_url, 
-        filename: result.public_id,
-        provider: 'cloudinary'
-      });
+      try {
+        const b64 = Buffer.from(req.file.buffer).toString('base64');
+        let dataURI = 'data:' + req.file.mimetype + ';base64,' + b64;
+        
+        const result = await cloudinary.uploader.upload(dataURI, {
+          resource_type: 'auto',
+          folder: 'digi-nepal'
+        });
+        
+        return res.json({ 
+          url: result.secure_url, 
+          filename: result.public_id,
+          provider: 'cloudinary'
+        });
+      } catch (cloudErr) {
+        console.error('Cloudinary upload failed, falling back to Base64:', cloudErr);
+      }
     }
 
-    // If no Cloudinary, explain the requirement for Cloud hosting
-    return res.status(500).json({ 
-      error: 'Cloud storage is required for Vercel/Cloud deployments',
-      help: 'To enable photo uploads, create a free account at cloudinary.com and add CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET to your environment variables.'
+    // 2. Fallback: Base64 Data URI (Works everywhere, including Vercel, without extra setup)
+    // This stores the image directly in the MongoDB string.
+    const b64 = Buffer.from(req.file.buffer).toString('base64');
+    const dataUrl = `data:${req.file.mimetype};base64,${b64}`;
+    
+    // Check if the image is too large for MongoDB (16MB BSON limit, but we recommend smaller)
+    if (dataUrl.length > 2 * 1024 * 1024) { // 2MB limit for Base64 to keep DB fast
+      return res.status(400).json({ error: 'Image too large for local storage. Please use a smaller image or configure Cloudinary.' });
+    }
+
+    return res.json({ 
+      url: dataUrl, 
+      filename: `local-${Date.now()}`,
+      provider: 'base64'
     });
 
   } catch (err) {
