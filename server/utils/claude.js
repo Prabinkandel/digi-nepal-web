@@ -9,7 +9,7 @@ const anthropic = new Anthropic({
 const generateResponse = async (messages, systemPrompt = '') => {
   try {
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-7',
+      model: 'claude-3-5-sonnet-20240620',
 
 
       max_tokens: 1024,
