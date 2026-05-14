@@ -236,15 +236,34 @@ async function placeOrder(productId) {
     return;
   }
   const btn = document.getElementById('modal-buy-btn');
-  if (btn) { btn.disabled = true; btn.textContent = 'Processing...'; }
+  const originalText = btn.innerHTML;
+  btn.disabled = true; 
+  btn.innerHTML = '<span class="spinner"></span> Processing Order...';
+  
   try {
     const data = await apiFetch('/orders', { method: 'POST', body: JSON.stringify({ product_id: productId }) });
-    closeModal();
-    showToast(`Order #${data.short_id} created! Opening WhatsApp...`, 'success');
-    setTimeout(() => window.open(data.wa_url, '_blank'), 800);
+    
+    // Instead of auto-opening (which is often blocked), show a confirmation screen with a big button
+    const content = document.getElementById('modal-content');
+    content.innerHTML = `
+      <div style="text-align:center;padding:20px 0">
+        <div style="font-size:3.5rem;margin-bottom:16px">✅</div>
+        <h2 style="font-size:1.6rem;font-weight:800;margin-bottom:8px">Order Created!</h2>
+        <p style="color:var(--text2);font-size:.95rem;line-height:1.65;margin-bottom:24px">
+          Order <strong>#${data.short_id}</strong> has been registered. <br/>
+          Click the button below to send your order details to us on WhatsApp.
+        </p>
+        <a href="${data.wa_url}" target="_blank" class="btn-primary" style="width:100%;justify-content:center;padding:16px;font-size:1.1rem;text-decoration:none;display:flex">
+          💬 Continue to WhatsApp
+        </a>
+        <button onclick="closeModal()" style="margin-top:12px;background:none;border:none;color:var(--text3);cursor:pointer;font-size:.9rem">I'll do it later</button>
+      </div>
+    `;
+    showToast(`Order #${data.short_id} created!`, 'success');
   } catch (err) {
     showToast(err.message, 'error');
-    if (btn) { btn.disabled = false; btn.textContent = 'Buy Now'; }
+    btn.disabled = false; 
+    btn.innerHTML = originalText;
   }
 }
 
