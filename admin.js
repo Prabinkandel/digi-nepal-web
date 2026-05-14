@@ -224,22 +224,44 @@ function openProductForm(p,cats){
       <button class="btn-primary" id="drawer-save">Save Product</button>
     </div>`,
     async()=>{
+      const name = $('f-name').value.trim();
+      const price = +$('f-price').value;
+      const catId = $('f-cat').value;
+      
+      if(!name || !price || !catId) return toast('Name, Price and Category are required','error');
+
       const imgFile=$('f-img-file').files[0];
       let imgUrl=$('f-img-url').value;
+      
       if(imgFile){
-        const fd=new FormData();fd.append('image',imgFile);
-        const h={};if(token)h['Authorization']=`Bearer ${token}`;
-        const r=await fetch(API+'/upload',{method:'POST',headers:h,body:fd});
-        const d=await r.json();
-        if(!r.ok)return toast(d.error,'error');
-        imgUrl=d.url;
+        try {
+          const fd=new FormData();fd.append('image',imgFile);
+          const h={};if(token)h['Authorization']=`Bearer ${token}`;
+          const r=await fetch(API+'/upload',{method:'POST',headers:h,body:fd});
+          
+          let d;
+          const contentType = r.headers.get('content-type');
+          if (contentType && contentType.includes('application/json')) {
+            d = await r.json();
+          } else {
+            const text = await r.text();
+            throw new Error(`Upload failed (${r.status}): ${text.substring(0, 40)}`);
+          }
+          
+          if(!r.ok) throw new Error(d?.error || 'Upload failed');
+          imgUrl=d.url;
+        } catch (uploadErr) {
+          return toast(uploadErr.message, 'error');
+        }
       }
+      
       const featsArr=$('f-feats').value.split('\n').map(x=>x.trim()).filter(Boolean);
-      const body={name:$('f-name').value,category_id:$('f-cat').value,price:+$('f-price').value,
+      const body={name, category_id:catId, price,
         original_price:+$('f-orig').value||null,discount:+$('f-disc').value||0,
         badge:$('f-badge').value||null,rating:+$('f-rating').value||4.8,
         description:$('f-desc').value,features:featsArr,image_url:imgUrl,
         is_active: p ? p.is_active : 1, sort_order: +$('f-sort').value || 0};
+        
       try{
         if(p)await api(`/products/${p.id}`,{method:'PUT',body:JSON.stringify(body)});
         else await api('/products',{method:'POST',body:JSON.stringify(body)});
