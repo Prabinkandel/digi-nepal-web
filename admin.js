@@ -211,8 +211,12 @@ function openProductForm(p,cats){
     <div class="form-group"><label>Features (one per line)</label><textarea id="f-feats" style="min-height:100px">${feats.join('\n')}</textarea></div>
     <div class="form-group"><label>Product Image</label>
       <div class="upload-zone" id="upload-zone">
-        <p>Click to upload image (JPG, PNG, WebP — max 5MB)</p>
+        <p>Click to upload image (Local only)</p>
         <input type="file" id="f-img-file" accept="image/*" style="display:none"/>
+      </div>
+      <div style="margin: 12px 0; display: flex; align-items: center; gap: 10px;">
+        <span style="font-size: .8rem; color: var(--text3)">OR</span>
+        <input id="f-img-url-input" placeholder="Paste image URL here..." style="flex: 1; font-size: .82rem; padding: 8px 12px;" value="${p?.image_url||''}"/>
       </div>
       <div class="upload-preview" id="upload-preview">
         ${p?.image_url?`<img src="${p.image_url}" alt=""/><span style="font-size:.82rem;color:var(--text3)">Current image</span>`:''}
@@ -231,7 +235,7 @@ function openProductForm(p,cats){
       if(!name || !price || !catId) return toast('Name, Price and Category are required','error');
 
       const imgFile=$('f-img-file').files[0];
-      let imgUrl=$('f-img-url').value;
+      let imgUrl = $('f-img-url-input').value.trim();
       
       if(imgFile){
         try {
@@ -251,7 +255,7 @@ function openProductForm(p,cats){
           if(!r.ok) throw new Error(d?.error || 'Upload failed');
           imgUrl=d.url;
         } catch (uploadErr) {
-          return toast(uploadErr.message, 'error');
+          toast('Upload failed, using manual URL if available', 'warning');
         }
       }
       
