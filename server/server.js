@@ -1,7 +1,8 @@
-require('dotenv').config();
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '.env') });
 const express = require('express');
 const cors = require('cors');
-const path = require('path');
+
 const connectDB = require('./config/db');
 
 // Connect to MongoDB
@@ -30,6 +31,8 @@ app.use('/api/upload',     require('./routes/upload'));
 app.use('/api/users',      require('./routes/users'));
 app.use('/api/payments',   require('./routes/payments'));
 app.use('/api/settings',   require('./routes/settings'));
+app.use('/api/ai',         require('./routes/ai'));
+
 
 // ── SPA FALLBACK ──────────────────────────────────────────────────────────────
 app.get('/admin', (req, res) => res.sendFile(path.join(__dirname, '../admin.html')));

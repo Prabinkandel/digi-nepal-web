@@ -304,15 +304,22 @@ function createProductCard(product) {
     </div>
     <div class="card-action">
       <button class="btn-card btn-card-buy" data-id="${product.id}">Buy Now</button>
-      <button class="btn-card btn-card-wish" aria-label="Wishlist">♡</button>
+      ${currentUser?.role === 'admin' ? `<button class="btn-card btn-card-edit" style="background:var(--surface2);color:var(--blue-light);border:1px solid var(--border)" data-id="${product.id}">✎ Edit</button>` : `<button class="btn-card btn-card-wish" aria-label="Wishlist">♡</button>`}
     </div>`;
   card.addEventListener('click', e => { if (!e.target.classList.contains('btn-card')) openProductModal(product, features); });
   card.querySelector('.btn-card-buy').addEventListener('click', e => { e.stopPropagation(); openProductModal(product, features); });
-  card.querySelector('.btn-card-wish').addEventListener('click', e => {
-    e.stopPropagation();
-    const b = e.target; b.textContent = b.textContent === '♡' ? '♥' : '♡';
-    showToast(b.textContent === '♥' ? 'Added to wishlist ♥' : 'Removed from wishlist', 'success');
-  });
+  if (currentUser?.role === 'admin') {
+    card.querySelector('.btn-card-edit').addEventListener('click', e => {
+      e.stopPropagation();
+      window.open(`/admin?editProduct=${product.id}`, '_blank');
+    });
+  } else {
+    card.querySelector('.btn-card-wish').addEventListener('click', e => {
+      e.stopPropagation();
+      const b = e.target; b.textContent = b.textContent === '♡' ? '♥' : '♡';
+      showToast(b.textContent === '♥' ? 'Added to wishlist ♥' : 'Removed from wishlist', 'success');
+    });
+  }
   return card;
 }
 
@@ -353,6 +360,10 @@ function openProductModal(product, features) {
       <button class="btn-qr-pay" id="modal-qr-btn" style="width:100%;justify-content:center;padding:14px;font-size:1rem;background:linear-gradient(135deg,#10b981,#059669);color:#fff;border:none;border-radius:10px;cursor:pointer;font-family:inherit;font-weight:700;display:flex;align-items:center;gap:8px" data-id="${product.id}">
         📱 Pay via QR / eSewa / Khalti
       </button>
+      ${currentUser?.role === 'admin' ? `
+        <button onclick="window.open('/admin?editProduct=${product.id}', '_blank')" style="width:100%;justify-content:center;padding:12px;font-size:.9rem;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:10px;cursor:pointer;margin-top:4px">
+          ⚙️ Admin: Edit Product Details
+        </button>` : ''}
       <p style="text-align:center;font-size:.8rem;color:var(--text3);margin-top:2px">
         ${currentUser ? `Logged in as <strong>${currentUser.name}</strong>` : '🔐 Login required to place order'}
       </p>
@@ -679,3 +690,77 @@ window.addEventListener('scroll', () => {
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
 initAuth().then(() => loadData());
+
+// ── AI CHAT LOGIC ───────────────────────────────────────────────────────────
+const aiToggle = document.getElementById('ai-chat-toggle');
+const aiWindow = document.getElementById('ai-chat-window');
+const aiClose = document.getElementById('ai-chat-close');
+const aiInput = document.getElementById('ai-chat-input');
+const aiSend = document.getElementById('ai-chat-send');
+const aiMessages = document.getElementById('ai-chat-messages');
+
+let chatHistory = [];
+
+aiToggle.addEventListener('click', () => {
+  aiWindow.hidden = !aiWindow.hidden;
+  if (!aiWindow.hidden) {
+    aiInput.focus();
+    aiToggle.style.display = 'none';
+  }
+});
+
+aiClose.addEventListener('click', () => {
+  aiWindow.hidden = true;
+  aiToggle.style.display = 'flex';
+});
+
+async function sendAiMessage() {
+  const text = aiInput.value.trim();
+  if (!text) return;
+
+  // Add user message to UI
+  addMessage(text, 'user');
+  aiInput.value = '';
+  
+  // Add to history
+  chatHistory.push({ role: 'user', content: text });
+
+  // Loading state
+  const loadingMsg = addMessage('Thinking...', 'bot');
+  
+  try {
+    const res = await fetch(API + '/ai/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messages: chatHistory,
+        systemPrompt: "You are the Digi Nepal AI assistant. You help customers with digital subscriptions (AI tools, VPN, Netflix, etc.). Be professional, helpful, and friendly. If you don't know something, suggest they contact support via WhatsApp (9705985657)."
+      })
+    });
+    
+    const data = await res.json();
+    loadingMsg.remove();
+    
+    if (data.message) {
+      addMessage(data.message, 'bot');
+      chatHistory.push({ role: 'assistant', content: data.message });
+    } else {
+      throw new Error('No response');
+    }
+  } catch (err) {
+    loadingMsg.remove();
+    addMessage('Sorry, I encountered an error. Please try again or contact support.', 'bot');
+  }
+}
+
+function addMessage(text, role) {
+  const div = document.createElement('div');
+  div.className = `ai-msg ${role}`;
+  div.textContent = text;
+  aiMessages.appendChild(div);
+  aiMessages.scrollTop = aiMessages.scrollHeight;
+  return div;
+}
+
+aiSend.addEventListener('click', sendAiMessage);
+aiInput.addEventListener('keydown', e => { if (e.key === 'Enter') sendAiMessage(); });

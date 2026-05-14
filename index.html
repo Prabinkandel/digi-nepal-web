@@ -271,9 +271,36 @@
     </div>
   </div>
 
-  <!-- TOAST -->
-  <div class="toast" id="toast" role="alert" aria-live="polite"></div>
+  <!-- AI CHAT WIDGET -->
+  <div class="ai-chat-widget" id="ai-chat-widget">
+    <div class="ai-chat-window" id="ai-chat-window" hidden>
+      <div class="ai-chat-header">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div class="ai-chat-avatar">🤖</div>
+          <div>
+            <div style="font-weight:700;font-size:.9rem">Digi Nepal AI</div>
+            <div style="font-size:.7rem;color:var(--success)">Online · Instant Help</div>
+          </div>
+        </div>
+        <button id="ai-chat-close" style="background:none;border:none;color:#fff;cursor:pointer;font-size:1.2rem">✕</button>
+      </div>
+      <div class="ai-chat-messages" id="ai-chat-messages">
+        <div class="ai-msg bot">Hello! I'm your Digi Nepal assistant. How can I help you today?</div>
+      </div>
+      <div class="ai-chat-input-area">
+        <input type="text" id="ai-chat-input" placeholder="Type your message..." autocomplete="off" />
+        <button id="ai-chat-send">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        </button>
+      </div>
+    </div>
+    <button class="ai-chat-toggle" id="ai-chat-toggle" aria-label="Open AI Chat">
+      <div class="ai-chat-icon">🤖</div>
+      <span class="ai-chat-label">Ask AI</span>
+    </button>
+  </div>
 
   <script src="app.js"></script>
+
 </body>
 </html>

@@ -176,7 +176,7 @@ function attachProductActions(products,cats){
 }
 
 function openProductForm(p,cats){
-  const feats=p?JSON.parse(p.features||'[]'):[];
+  const feats = Array.isArray(p?.features) ? p.features : (typeof p?.features === 'string' ? JSON.parse(p.features || '[]') : []);
   openDrawer(p?'Edit Product':'Add Product',`
     <div class="form-group"><label>Product Name *</label><input id="f-name" value="${p?.name||''}"/></div>
     <div class="form-group"><label>Category</label>
@@ -195,7 +195,10 @@ function openProductForm(p,cats){
         </select>
       </div>
     </div>
-    <div class="form-group"><label>Rating</label><input id="f-rating" type="number" step="0.1" min="1" max="5" value="${p?.rating||4.8}"/></div>
+    <div class="form-row">
+      <div class="form-group"><label>Rating</label><input id="f-rating" type="number" step="0.1" min="1" max="5" value="${p?.rating||4.8}"/></div>
+      <div class="form-group"><label>Sort Order</label><input id="f-sort" type="number" value="${p?.sort_order||0}"/></div>
+    </div>
     <div class="form-group"><label>Description</label><textarea id="f-desc">${p?.description||''}</textarea></div>
     <div class="form-group"><label>Features (one per line)</label><textarea id="f-feats" style="min-height:100px">${feats.join('\n')}</textarea></div>
     <div class="form-group"><label>Product Image</label>
@@ -227,7 +230,8 @@ function openProductForm(p,cats){
       const body={name:$('f-name').value,category_id:$('f-cat').value,price:+$('f-price').value,
         original_price:+$('f-orig').value||null,discount:+$('f-disc').value||0,
         badge:$('f-badge').value||null,rating:+$('f-rating').value||4.8,
-        description:$('f-desc').value,features:featsArr,image_url:imgUrl,is_active:1};
+        description:$('f-desc').value,features:featsArr,image_url:imgUrl,
+        is_active: p ? p.is_active : 1, sort_order: +$('f-sort').value || 0};
       try{
         if(p)await api(`/products/${p.id}`,{method:'PUT',body:JSON.stringify(body)});
         else await api('/products',{method:'POST',body:JSON.stringify(body)});
@@ -256,13 +260,25 @@ async function renderCategories(){
           <td><span style="font-size:1.5rem">${c.icon}</span></td>
           <td>—</td>
           <td><div class="td-actions">
-            <button class="btn-outline btn-sm" onclick='openCatForm(${JSON.stringify(c)})'>Edit</button>
-            <button class="btn-danger btn-sm" onclick="delCat('${c.id}','${c.name}')">Delete</button>
+            <button class="btn-outline btn-sm edit-cat" data-id="${c.id}">Edit</button>
+            <button class="btn-danger btn-sm del-cat" data-id="${c.id}">Delete</button>
           </div></td>
         </tr>`).join('')}
       </tbody>
     </table></div>`;
   $('add-cat-btn').onclick=()=>openCatForm(null);
+  document.querySelectorAll('.edit-cat').forEach(b => {
+    b.onclick = () => {
+      const c = cats.find(x => x.id === b.dataset.id);
+      if (c) openCatForm(c);
+    };
+  });
+  document.querySelectorAll('.del-cat').forEach(b => {
+    b.onclick = () => {
+      const c = cats.find(x => x.id === b.dataset.id);
+      if (c) delCat(c.id, c.name);
+    };
+  });
 }
 
 window.openCatForm=function(c){
@@ -362,13 +378,25 @@ async function renderOffers(){
           <td style="font-size:.82rem;color:var(--text3)">${o.valid_until||'No expiry'}</td>
           <td><span class="badge ${o.is_active?'badge-active':'badge-inactive'}">${o.is_active?'Active':'Inactive'}</span></td>
           <td><div class="td-actions">
-            <button class="btn-outline btn-sm" onclick='openOfferForm(${JSON.stringify(o)},${JSON.stringify(products)})'>Edit</button>
-            <button class="btn-danger btn-sm" onclick="toggleOffer('${o.id}',${o.is_active})">${o.is_active?'Disable':'Enable'}</button>
+            <button class="btn-outline btn-sm edit-offer" data-id="${o.id}">Edit</button>
+            <button class="btn-danger btn-sm toggle-offer" data-id="${o.id}">${o.is_active?'Disable':'Enable'}</button>
           </div></td>
         </tr>`).join('')}
       </tbody>
     </table></div>`;
   $('add-offer-btn').onclick=()=>openOfferForm(null,products);
+  document.querySelectorAll('.edit-offer').forEach(b => {
+    b.onclick = () => {
+      const o = offers.find(x => x.id === b.dataset.id);
+      if (o) openOfferForm(o, products);
+    };
+  });
+  document.querySelectorAll('.toggle-offer').forEach(b => {
+    b.onclick = () => {
+      const o = offers.find(x => x.id === b.dataset.id);
+      if (o) toggleOffer(o.id, o.is_active);
+    };
+  });
 }
 
 window.openOfferForm=function(o,products){
@@ -542,7 +570,20 @@ async function renderSettings(){
         adminUser=u;
         $('login-screen').hidden=true;$('admin-app').hidden=false;
         $('admin-name-display').textContent=`👤 ${u.name}`;
-        navigate('dashboard');
+        const params = new URLSearchParams(window.location.search);
+        const pid = params.get('editProduct');
+        if (pid) {
+          navigate('products');
+          setTimeout(async () => {
+            try {
+              const p = await api(`/products/${pid}`);
+              const cats = await api('/categories');
+              openProductForm(p, cats);
+            } catch (e) { toast('Product not found', 'error'); }
+          }, 600);
+        } else {
+          navigate('dashboard');
+        }
         return;
       }
     }catch(e){localStorage.removeItem('tv_token');token=null;}
