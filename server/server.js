@@ -13,8 +13,8 @@ const PORT = process.env.PORT || 3001;
 
 // ── MIDDLEWARE ─────────────────────────────────────────────────────────────────
 app.use(cors({ origin: '*' }));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
 // Serve uploaded images
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
