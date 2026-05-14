@@ -228,14 +228,20 @@ function openProductForm(p,cats){
       <button class="btn-primary" id="drawer-save">Save Product</button>
     </div>`,
     async()=>{
+      const saveBtn = $('drawer-save');
+      const originalText = saveBtn.textContent;
+      
       const name = $('f-name').value.trim();
       const price = +$('f-price').value;
       const catId = $('f-cat').value;
       
       if(!name || !price || !catId) return toast('Name, Price and Category are required','error');
 
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving...';
+
       const imgFile=$('f-img-file').files[0];
-      let imgUrl = $('f-img-url-input').value.trim();
+      let imgUrl = $('f-img-url-input').value.trim() || $('f-img-url').value;
       
       if(imgFile){
         try {
@@ -270,7 +276,11 @@ function openProductForm(p,cats){
         if(p)await api(`/products/${p.id}`,{method:'PUT',body:JSON.stringify(body)});
         else await api('/products',{method:'POST',body:JSON.stringify(body)});
         closeDrawer();toast('Product saved!');renderProducts();
-      }catch(e){toast(e.message,'error');}
+      }catch(e){
+        toast(e.message,'error');
+        saveBtn.disabled = false;
+        saveBtn.textContent = originalText;
+      }
     }
   );
   $('upload-zone').onclick=()=>$('f-img-file').click();
