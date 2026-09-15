@@ -14,6 +14,7 @@ const paymentSchema = new mongoose.Schema({
   screenshot_url: { type: String, default: '' },
   status: { type: String, default: 'pending' },
   admin_note: { type: String, default: null },
+  dedupe_key: { type: String, unique: true, sparse: true },
 }, { timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' } });
 
 module.exports = mongoose.model('Payment', paymentSchema);

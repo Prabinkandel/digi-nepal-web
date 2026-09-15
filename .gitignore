@@ -115,3 +115,4 @@ Thumbs.db
 *.pem
 server/.env
 server/node_modules/
+.local-data/

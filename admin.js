@@ -1,13 +1,15 @@
 const API='/api';
-let token=localStorage.getItem('tv_token'),adminUser=null;
+let csrf='',adminUser=null;
 
 const $=id=>document.getElementById(id);
 const fmt=n=>`Rs ${Number(n).toLocaleString()}`;
 
+const list=result=>Array.isArray(result)?result:(result.items||[]);
 async function api(path,opts={}){
-  const h={'Content-Type':'application/json'};
-  if(token)h['Authorization']=`Bearer ${token}`;
-  const r=await fetch(API+path,{...opts,headers:{...h,...(opts.headers||{})}});
+  const h={Accept:'application/json'};
+  if(opts.body && !(opts.body instanceof FormData))h['Content-Type']='application/json';
+  if(csrf)h['x-csrf-token']=csrf;
+  const r=await fetch(API+path,{credentials:'same-origin',...opts,headers:{...h,...(opts.headers||{})}});
   
   const contentType = r.headers.get('content-type');
   if (contentType && contentType.includes('application/json')) {
@@ -51,8 +53,7 @@ $('login-form').addEventListener('submit',async e=>{
   try{
     const d=await api('/auth/login',{method:'POST',body:JSON.stringify({email:$('l-email').value,password:$('l-pass').value})});
     if(d.user.role!=='admin')throw new Error('Admin access required');
-    token=d.token;adminUser=d.user;
-    localStorage.setItem('tv_token',token);
+    csrf=d.csrf||d.token||'';adminUser=d.user;
     $('login-screen').hidden=true;$('admin-app').hidden=false;
     $('admin-name-display').textContent=`👤 ${adminUser.name}`;
     navigate('dashboard');
@@ -62,7 +63,7 @@ $('login-form').addEventListener('submit',async e=>{
   }
 });
 
-$('admin-logout').onclick=()=>{localStorage.removeItem('tv_token');location.reload();};
+$('admin-logout').onclick=async()=>{try{await api('/auth/logout',{method:'POST',body:'{}'});}catch(e){void e;}csrf='';location.reload();};
 $('sidebar-toggle').onclick=()=>$('sidebar').classList.toggle('open');
 
 // NAV
@@ -112,7 +113,8 @@ async function renderDashboard(){
 // PRODUCTS
 async function renderProducts(){
   $('page-content').innerHTML=`<div style="color:var(--text3);text-align:center;padding:40px">Loading...</div>`;
-  const [products,cats]=await Promise.all([api('/products'),api('/categories')]);
+  const [productResult,categoryResult]=await Promise.all([api('/products/all?limit=100'),api('/categories/all?limit=100')]);
+  const products=list(productResult),cats=list(categoryResult);
   const catMap={};cats.forEach(c=>catMap[c.id]=c);
   $('page-content').innerHTML=`
     <div class="section-header">
@@ -246,8 +248,8 @@ function openProductForm(p,cats){
       if(imgFile){
         try {
           const fd=new FormData();fd.append('image',imgFile);
-          const h={};if(token)h['Authorization']=`Bearer ${token}`;
-          const r=await fetch(API+'/upload',{method:'POST',headers:h,body:fd});
+          const h={'x-csrf-token':csrf};
+          const r=await fetch(API+'/upload',{method:'POST',credentials:'same-origin',headers:h,body:fd});
           
           let d;
           const contentType = r.headers.get('content-type');
@@ -267,8 +269,8 @@ function openProductForm(p,cats){
       
       const featsArr=$('f-feats').value.split('\n').map(x=>x.trim()).filter(Boolean);
       const body={name, category_id:catId, price,
-        original_price:+$('f-orig').value||null,discount:+$('f-disc').value||0,
-        badge:$('f-badge').value||null,rating:+$('f-rating').value||4.8,
+        original_price:+$('f-orig').value||null,
+        badge:$('f-badge').value||'',
         description:$('f-desc').value,features:featsArr,image_url:imgUrl,
         is_active: p ? p.is_active : 1, sort_order: +$('f-sort').value || 0};
         
@@ -293,7 +295,7 @@ function openProductForm(p,cats){
 
 // CATEGORIES
 async function renderCategories(){
-  const cats=await api('/categories');
+  const cats=list(await api('/categories/all?limit=100'));
   $('page-content').innerHTML=`
     <div class="section-header"><h2>Categories</h2><button class="btn-primary" id="add-cat-btn">+ Add Category</button></div>
     <div class="table-wrap"><table>
@@ -329,7 +331,7 @@ window.openCatForm=function(c){
   openDrawer(c?'Edit Category':'Add Category',`
     <div class="form-group"><label>Name *</label><input id="c-name" value="${c?.name||''}"/></div>
     <div class="form-group"><label>Icon (emoji)</label><input id="c-icon" value="${c?.icon||'📦'}" style="font-size:1.5rem;text-align:center"/></div>
-    <div class="form-group"><label>Color Gradient (CSS)</label><input id="c-color" value="${c?.color||'linear-gradient(135deg,#667eea,#764ba2)'}" placeholder="linear-gradient(...)"/></div>
+    <div class="form-group"><label>Brand color</label><input id="c-color" value="${c?.color||'#B91C1C'}" placeholder="#B91C1C" pattern="#[0-9a-fA-F]{6}"/></div>
     <div class="form-group"><label>Sort Order</label><input id="c-sort" type="number" value="${c?.sort_order||0}"/></div>
     <div class="form-actions">
       <button class="btn-outline" onclick="closeDrawer()">Cancel</button>
@@ -355,7 +357,7 @@ window.delCat=function(id,name){
 
 // ORDERS
 async function renderOrders(){
-  const orders=await api('/orders/all');
+  const orders=list(await api('/orders/all?limit=100'));
   $('page-content').innerHTML=`
     <div class="section-header"><h2>Orders</h2>
       <select class="filter-select" id="order-filter">
@@ -372,7 +374,7 @@ async function renderOrders(){
     </table></div></div>`;
   $('order-filter').onchange=async()=>{
     const s=$('order-filter').value;
-    const all=s?await api(`/orders/all?status=${s}`):await api('/orders/all');
+    const all=list(s?await api(`/orders/all?status=${s}&limit=100`):await api('/orders/all?limit=100'));
     $('orders-tbody').innerHTML=renderOrderRows(all);
     attachOrderActions(all);
   };
@@ -409,7 +411,8 @@ function attachOrderActions(){}
 
 // OFFERS
 async function renderOffers(){
-  const [offers,products]=await Promise.all([api('/offers/all'),api('/products')]);
+  const [offerResult,productResult]=await Promise.all([api('/offers/all?limit=100'),api('/products/all?limit=100')]);
+  const offers=list(offerResult),products=list(productResult);
   $('page-content').innerHTML=`
     <div class="section-header"><h2>Flash Offers</h2><button class="btn-primary" id="add-offer-btn">+ Add Offer</button></div>
     <div class="table-wrap"><table>
@@ -456,7 +459,8 @@ window.openOfferForm=function(o,products){
       <button class="btn-primary" id="drawer-save">Save Offer</button>
     </div>`,
     async()=>{
-      const body={product_id:$('o-prod').value,label:$('o-label').value,discount_pct:+$('o-disc').value,valid_until:$('o-until').value||null};
+      const date=$('o-until').value;
+      const body={product_id:$('o-prod').value,label:$('o-label').value,discount_pct:+$('o-disc').value,valid_until:date?new Date(date+'T23:59:59Z').toISOString():null};
       try{
         if(o)await api(`/offers/${o.id}`,{method:'PUT',body:JSON.stringify(body)});
         else await api('/offers',{method:'POST',body:JSON.stringify(body)});
@@ -476,7 +480,7 @@ async function renderPayments(){
   const statusFilter=$('pay-filter')?.value||'';
   const url=statusFilter?`/payments/all?status=${statusFilter}`:'/payments/all';
   let payments;
-  try{ payments=await api(url); }catch(e){ $('page-content').innerHTML=`<div style="color:var(--sale);padding:20px">${e.message}</div>`; return; }
+  try{ payments=list(await api(url+(url.includes('?')?'&':'?')+'limit=100')); }catch(e){ $('page-content').innerHTML=`<div style="color:var(--sale);padding:20px">${e.message}</div>`; return; }
   const statusBadge={pending:'badge-pending',verified:'badge-verified',rejected:'badge-rejected'};
   $('page-content').innerHTML=`
     <div class="section-header"><h2>Payments <span style="color:var(--text3);font-weight:400;font-size:1rem">(${payments.length})</span></h2>
@@ -523,7 +527,7 @@ window.verifyPayment=async function(id,status){
 
 // USERS
 async function renderUsers(){
-  const users=await api('/users');
+  const users=list(await api('/users?limit=100'));
   $('page-content').innerHTML=`
     <div class="section-header"><h2>Users</h2></div>
     <div class="table-wrap"><table>
@@ -546,13 +550,13 @@ async function renderUsers(){
 
 window.toggleUser=function(id,name,active){
   confirm(`${active?'Disable':'Enable'} user "${name}"?`,async()=>{
-    await api(`/users/${id}/toggle`,{method:'PUT'});toast('User updated');renderUsers();
+    await api(`/users/${id}`,{method:'PUT',body:JSON.stringify({is_active:active?0:1})});toast('User updated');renderUsers();
   });
 };
 
 window.promoteUser=function(id,name){
   confirm(`Make "${name}" an admin? This cannot be undone.`,async()=>{
-    await api(`/users/${id}/promote`,{method:'PUT'});toast('User promoted to admin');renderUsers();
+    await api(`/users/${id}`,{method:'PUT',body:JSON.stringify({role:'admin'})});toast('User promoted to admin');renderUsers();
   });
 };
 
@@ -592,8 +596,8 @@ async function renderSettings(){
         let url=settings.payment_qr_url;
         if(f){
           const fd=new FormData(); fd.append('image',f);
-          const h={}; if(token)h['Authorization']=`Bearer ${token}`;
-          const r=await fetch(API+'/upload',{method:'POST',headers:h,body:fd});
+          const h={'x-csrf-token':csrf};
+          const r=await fetch(API+'/upload',{method:'POST',credentials:'same-origin',headers:h,body:fd});
           const d=await r.json();
           if(!r.ok) throw new Error(d.error);
           url=d.url;
@@ -607,10 +611,11 @@ async function renderSettings(){
 
 // INIT
 (async()=>{
-  if(token){
-    try{
+  try{
       const u=await api('/auth/me');
       if(u.role==='admin'){
+        const csrfResponse=await api('/auth/csrf');
+        csrf=csrfResponse.csrf||'';
         adminUser=u;
         $('login-screen').hidden=true;$('admin-app').hidden=false;
         $('admin-name-display').textContent=`👤 ${u.name}`;
@@ -621,7 +626,7 @@ async function renderSettings(){
           setTimeout(async () => {
             try {
               const p = await api(`/products/${pid}`);
-              const cats = await api('/categories');
+              const cats = list(await api('/categories/all?limit=100'));
               openProductForm(p, cats);
             } catch (e) { toast('Product not found', 'error'); }
           }, 600);
@@ -630,6 +635,5 @@ async function renderSettings(){
         }
         return;
       }
-    }catch(e){localStorage.removeItem('tv_token');token=null;}
-  }
+    }catch(e){void e;}
 })();

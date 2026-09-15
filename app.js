@@ -1,786 +1,127 @@
+if (['localhost','127.0.0.1'].includes(window.location.hostname) && window.location.port !== '3001') window.location.replace('http://localhost:3001' + window.location.pathname + window.location.search + window.location.hash);
 const API = '/api';
-const WA_NUM = '9705985657';
-
-// ── AUTH STATE ────────────────────────────────────────────────────────────────
-let currentUser = null;
-let authToken = localStorage.getItem('tv_token');
-
-async function apiFetch(path, opts = {}) {
-  const headers = { 'Content-Type': 'application/json' };
-  if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
-  const res = await fetch(API + path, { ...opts, headers: { ...headers, ...opts.headers } });
-  
-  const contentType = res.headers.get('content-type');
-  if (contentType && contentType.includes('application/json')) {
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Request failed');
-    return data;
-  } else {
-    const text = await res.text();
-    if (!res.ok) throw new Error(`Server Error: ${text.substring(0, 40)}...`);
-    return text;
-  }
+const state = { user: null, csrf: localStorage.getItem('dn_csrf') || '', category: '', sort: 'newest', page: 1, searchTimer: null, searchController: null, providers: { google: false } };
+const $ = id => document.getElementById(id);
+const escapeHtml = value => String(value ?? '').replace(/[&<>'"]/g, char => ({ '&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;' }[char]));
+const formatMoney = amount => new Intl.NumberFormat('en-NP',{style:'currency',currency:'NPR',maximumFractionDigits:0}).format(Number(amount || 0));
+async function api(path, options = {}) {
+  const headers = { Accept:'application/json', ...(options.headers || {}) };
+  if (options.body && !(options.body instanceof FormData)) headers['Content-Type'] = 'application/json';
+  if (state.csrf) headers['x-csrf-token'] = state.csrf;
+  const response = await fetch(API + path, { credentials:'same-origin', ...options, headers });
+  const payload = response.headers.get('content-type')?.includes('application/json') ? await response.json() : {};
+  if (!response.ok) throw new Error(payload.error || 'Something went wrong. Please try again.');
+  return payload;
 }
-
-async function initAuth() {
-  if (!authToken) { renderAuthBar(); return; }
+function showDialog(id) { const dialog = $(id); if (!dialog.open) dialog.showModal(); }
+function closeDialog(id) { $(id).close(); }
+function toast(message, type = '') { const item = document.createElement('div'); item.className = 'toast ' + type; item.textContent = message; $('toast-region').append(item); setTimeout(() => item.remove(), 4500); }
+function productSkeletons(count = 8) { return Array.from({length:count}, () => '<article class="product-card skeleton"><div></div></article>').join(''); }
+function setProductLoading() { $('product-grid').innerHTML = productSkeletons(); $('catalog-empty').hidden = true; $('pagination').replaceChildren(); }
+function productVisual(product, compact = false) { const image = product.image_url ? '<img src="' + escapeHtml(product.image_url) + '" alt="" loading="lazy">' : '<span class="product-monogram tone-' + ((product.name || '').charCodeAt(0) % 5) + '" aria-hidden="true">' + escapeHtml((product.name || '?').slice(0,1)) + '</span>'; return '<div class="product-image' + (compact ? ' compact-product-image' : '') + '">' + image + '</div>'; }
+function productCard(product) {
+  const badge = product.offer_label || product.badge;
+  const benefits = (product.features || []).slice(0,3).map(feature => '<li>' + escapeHtml(feature) + '</li>').join('');
+  return '<article class="product-card">' + productVisual(product) + (badge ? '<span class="badge">' + escapeHtml(badge) + '</span>' : '') + '<p class="product-category">' + escapeHtml(product.category_name || 'DIGITAL SERVICE') + '</p><h3>' + escapeHtml(product.name) + '</h3><p class="product-desc">' + escapeHtml(product.description || 'View subscription details and plan information.') + '</p>' + (benefits ? '<ul class="product-benefits">' + benefits + '</ul>' : '') + '<div class="price-row"><div><small>Starting at</small><span class="price">' + formatMoney(product.price) + '</span></div>' + (product.original_price ? '<small class="was-price">' + formatMoney(product.original_price) + '</small>' : '') + '</div><div class="product-actions"><button class="card-action card-view" data-product="' + escapeHtml(product.id) + '">View product</button><button class="card-action card-buy" data-buy="' + escapeHtml(product.id) + '">Buy now <span>→</span></button></div></article>';
+}
+async function loadProducts() {
+  setProductLoading();
+  const query = new URLSearchParams({ page:String(state.page), limit:'12', sort:state.sort });
+  if (state.category) query.set('category',state.category);
   try {
-    currentUser = await apiFetch('/auth/me');
-    renderAuthBar();
-  } catch {
-    authToken = null;
-    localStorage.removeItem('tv_token');
-    renderAuthBar();
+    const result = await api('/products?' + query);
+    const products = result.items || result;
+    $('product-grid').innerHTML = products.map(productCard).join('');
+    $('catalog-empty').hidden = products.length > 0;
+    $('product-grid').querySelectorAll('[data-product]').forEach(button => button.addEventListener('click', () => openProduct(button.dataset.product)));
+    $('product-grid').querySelectorAll('[data-buy]').forEach(button => button.addEventListener('click', () => startOrder(button.dataset.buy)));
+    renderDiscovery(products);
+    renderPages(result.pages || 1);
+  } catch (error) {
+    $('product-grid').innerHTML = '<div class="catalog-empty"><h3>Couldn’t load subscriptions.</h3><p>' + escapeHtml(error.message) + '</p><button class="button button-quiet" id="retry-products">Try again</button></div>';
+    $('retry-products').onclick = loadProducts;
   }
 }
-
-function renderAuthBar() {
-  const actions = document.querySelector('.nav-actions');
-  const existing = document.getElementById('user-menu-wrap');
-  if (existing) existing.remove();
-  const wrap = document.createElement('div');
-  wrap.id = 'user-menu-wrap';
-  wrap.style.display = 'flex'; wrap.style.alignItems = 'center'; wrap.style.gap = '10px';
-  if (currentUser) {
-    wrap.innerHTML = `
-      <div class="user-chip" id="user-chip">
-        <div class="user-avatar">${currentUser.name[0].toUpperCase()}</div>
-        <span>${currentUser.name.split(' ')[0]}</span>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
-      </div>
-      <div class="user-dropdown" id="user-dropdown" hidden>
-        <div class="ud-name">${currentUser.name}</div>
-        <div class="ud-email">${currentUser.email}</div>
-        <hr class="ud-hr"/>
-        <a href="#" class="ud-item" id="ud-orders">📦 My Orders</a>
-        ${currentUser.role === 'admin' ? `<a href="/admin" class="ud-item" target="_blank">⚙️ Admin Panel</a>` : ''}
-        <a href="#" class="ud-item ud-logout" id="ud-logout">🚪 Logout</a>
-      </div>`;
-    actions.prepend(wrap);
-    document.getElementById('user-chip').addEventListener('click', () => {
-      const dd = document.getElementById('user-dropdown');
-      dd.hidden = !dd.hidden;
-    });
-    document.addEventListener('click', e => {
-      if (!wrap.contains(e.target)) { const dd = document.getElementById('user-dropdown'); if (dd) dd.hidden = true; }
-    });
-    document.getElementById('ud-logout').addEventListener('click', e => { e.preventDefault(); logout(); });
-    document.getElementById('ud-orders').addEventListener('click', e => { e.preventDefault(); showMyOrders(); });
-  } else {
-    wrap.innerHTML = `<button class="btn-ghost" id="nav-login-btn" style="padding:8px 16px;font-size:.9rem">Login</button><a href="#" class="btn-primary nav-cta" id="nav-register-btn">Signup</a>`;
-    actions.prepend(wrap);
-    document.getElementById('nav-login-btn').addEventListener('click', () => openAuthModal('login'));
-    document.getElementById('nav-register-btn').addEventListener('click', e => { e.preventDefault(); openAuthModal('register'); });
-  }
+function renderDiscovery(products) { const rail=$('discovery-rail'); if(!rail) return; rail.innerHTML=products.map(product => '<button class="discovery-card" data-discovery-product="' + escapeHtml(product.id) + '">' + productVisual(product,true) + '<span><small>' + escapeHtml(product.category_name || 'DIGITAL SERVICE') + '</small><strong>' + escapeHtml(product.name) + '</strong><b>' + formatMoney(product.price) + '</b></span></button>').join(''); rail.querySelectorAll('[data-discovery-product]').forEach(button=>button.onclick=()=>openProduct(button.dataset.discoveryProduct)); }
+function renderPages(pages) { const holder = $('pagination'); holder.replaceChildren(); if (pages <= 1) return; for (let number=1; number<=pages; number++) { const button = document.createElement('button'); button.className = 'page-button' + (number === state.page ? ' active':''); button.textContent = number; button.ariaLabel = 'Page ' + number; button.onclick = () => { state.page = number; loadProducts(); document.querySelector('#catalog').scrollIntoView({behavior:'smooth'}); }; holder.append(button); } }
+async function loadCategories() { try { const result = await api('/categories?limit=100&sort=name'); const categories = result.items || result; const holder = $('category-tabs'); categories.forEach(category => { const button = document.createElement('button'); button.className='category'; button.dataset.category=category.id; button.setAttribute('role','tab'); button.textContent=category.name; button.onclick=() => selectCategory(category.id); holder.append(button); }); } catch { toast('Categories are temporarily unavailable.'); } }
+function selectCategory(category) { state.category=category; state.page=1; document.querySelectorAll('.category').forEach(button => { const active=button.dataset.category===category; button.classList.toggle('active',active); button.setAttribute('aria-selected',String(active)); }); loadProducts(); }
+async function openProduct(id) { showDialog('product-dialog'); $('product-detail').innerHTML = '<div class="product-detail"><div class="product-detail-image skeleton"></div><div><p class="eyebrow">LOADING DETAILS</p><h1 id="product-title">Subscription</h1></div></div>'; try { const product = await api('/products/' + encodeURIComponent(id)); const image = product.image_url ? '<img src="' + escapeHtml(product.image_url) + '" alt="" loading="eager">' : '<span class="fallback" aria-hidden="true">' + escapeHtml(product.name.slice(0,1)) + '</span>'; const features = (product.features || []).map(feature => '<li>' + escapeHtml(feature) + '</li>').join('') || '<li>Product details are confirmed before processing</li><li>Order progress is visible from your account</li><li>Support is available when you need it</li>'; $('product-detail').innerHTML = '<div class="product-detail-image">' + image + '</div><div><p class="eyebrow">' + escapeHtml(product.category_name || 'SUBSCRIPTION') + '</p><h1 id="product-title">' + escapeHtml(product.name) + '</h1><p>' + escapeHtml(product.description || 'Review this subscription and begin a secure order when you are ready.') + '</p><div class="price-row"><span class="price">' + formatMoney(product.price) + '</span>' + (product.original_price ? '<small>' + formatMoney(product.original_price) + '</small>' : '') + '</div><ul class="feature-list">' + features + '</ul><button class="button" id="start-order" data-id="' + escapeHtml(product.id) + '">Start secure order <span>→</span></button></div>'; $('start-order').onclick = () => startOrder(product.id); } catch (error) { $('product-detail').innerHTML = '<h2 id="product-title">Couldn’t load this subscription</h2><p>' + escapeHtml(error.message) + '</p>'; } }
+async function startOrder(productId) { if (!state.user) { closeDialog('product-dialog'); openAuth(); return; } try { const order = await api('/orders',{method:'POST',body:JSON.stringify({product_id:productId,request_key:crypto.randomUUID()})}); closeDialog('product-dialog'); openPayment(order); } catch (error) { toast(error.message,'error'); } }
+async function openPayment(order) { showDialog('payment-dialog'); $('payment-content').innerHTML='<p class="eyebrow">SECURE PAYMENT</p><h2 id="payment-title">Complete your payment</h2><p class="form-note">Loading the available payment options…</p>'; try { const settings=await api('/settings'); const methods=(settings.payment_methods||'').split(',').map(value=>value.trim()).filter(Boolean); const reference=String(order.id).slice(0,8).toUpperCase(); const qr=settings.payment_qr_url?'<img class="payment-qr" src="'+escapeHtml(settings.payment_qr_url)+'" alt="Payment QR code">':''; $('payment-content').innerHTML='<div class="payment-layout"><div><p class="eyebrow">PAYMENT FOR ORDER '+reference+'</p><h2 id="payment-title">'+escapeHtml(order.product_name)+'</h2><div class="payment-total"><span>Amount due</span><strong>'+formatMoney(order.price)+'</strong></div><p class="payment-instructions">'+escapeHtml(settings.payment_instructions||'Add your order reference to the transfer. Upload your receipt for manual verification.')+'</p>'+qr+'</div><form class="payment-form" id="payment-form"><label class="auth-field">Payment method<select name="payment_method" required>'+methods.map(method=>'<option value="'+escapeHtml(method)+'">'+escapeHtml(method)+'</option>').join('')+'</select></label><label class="auth-field">Payer name<input name="payer_name" autocomplete="name" value="'+escapeHtml(state.user?.name||'')+'" required maxlength="100"></label><label class="auth-field">Transaction reference<input name="transaction_id" autocomplete="off" required minlength="3" maxlength="100" placeholder="Enter the transfer reference"></label><label class="auth-field">Phone number <span class="field-optional">Optional</span><input name="phone" autocomplete="tel" maxlength="40"></label><label class="auth-field">Receipt image<input name="receipt" type="file" accept="image/png,image/jpeg,image/webp" required></label><label class="auth-field">Note <span class="field-optional">Optional</span><textarea name="note" maxlength="1000" rows="2" placeholder="Anything we should know?"></textarea></label><p class="auth-alert" id="payment-error" role="alert" hidden></p><button class="auth-primary" type="submit"><span>Submit payment proof</span><span aria-hidden="true">→</span></button></form></div>'; $('payment-form').onsubmit=event=>submitPayment(event,order); } catch(error) { $('payment-content').innerHTML='<h2 id="payment-title">Payment details are unavailable</h2><p class="form-error">'+escapeHtml(error.message)+'</p>'; } }
+async function submitPayment(event, order) { event.preventDefault(); const form=event.currentTarget, values=new FormData(form), file=values.get('receipt'), error=$('payment-error'); error.hidden=true; if(!(file instanceof File)||!file.size){ error.textContent='Attach your payment receipt to continue.'; error.hidden=false; return; } setSubmitting(form,true,'Uploading receipt…'); try { const upload=new FormData(); upload.append('image',file); upload.append('purpose','receipt'); const media=await api('/upload',{method:'POST',body:upload}); setSubmitting(form,true,'Submitting payment…'); await api('/payments',{method:'POST',body:JSON.stringify({order_id:order.id,payer_name:values.get('payer_name'),transaction_id:values.get('transaction_id'),payment_method:values.get('payment_method'),phone:values.get('phone')||'',note:values.get('note')||'',media_id:media.id})}); closeDialog('payment-dialog'); toast('Payment proof submitted. We will update your order after verification.'); openOrders(); } catch(err) { error.textContent=err.message; error.hidden=false; setSubmitting(form,false,'Submit payment proof'); } }
+function renderAccount() { const holder=$('account-actions'); holder.replaceChildren(); holder.className='account-menu'; if(state.user) { const orders=document.createElement('button'); orders.className='nav-login'; orders.textContent='My account'; orders.onclick=()=>openOrders(); const logout=document.createElement('button'); logout.className='nav-logout'; logout.textContent='Sign out'; logout.onclick=logoutUser; holder.append(orders,logout); } else { const loginButton=document.createElement('button'); loginButton.className='nav-login'; loginButton.textContent='Login'; loginButton.onclick=()=>openAuth('login'); const signupButton=document.createElement('button'); signupButton.className='nav-signup'; signupButton.textContent='Sign up'; signupButton.onclick=()=>openAuth('signup'); holder.append(loginButton,signupButton); } }
+async function initAccount() { try { state.user = await api('/auth/me'); } catch { state.user = null; localStorage.removeItem('dn_csrf'); state.csrf=''; } renderAccount(); }
+function authFrame(eyebrow, title, description, body) { return '<div class="auth-shell"><aside class="auth-aside" aria-hidden="true"><img src="logo.png" alt=""><div><p class="auth-kicker">DIGI NEPAL ACCOUNT</p><h3>Premium access,<br>kept simple.</h3><p>Manage orders, payment updates, and subscriptions from one protected place.</p></div><span class="auth-aside-mark">Trusted digital subscriptions</span></aside><section class="auth-panel"><p class="eyebrow">'+eyebrow+'</p><h2 id="auth-title">'+title+'</h2><p class="auth-description">'+description+'</p>'+body+'</section></div>'; }
+function authAlert(message) { const alert=$('auth-error'); if(alert){alert.textContent=message;alert.hidden=false;} }
+function passwordField(name, label, autocomplete, strong = false) { return '<label class="auth-field">'+label+'<span class="password-input"><input name="'+name+'" type="password" autocomplete="'+autocomplete+'" required '+(strong ? 'minlength="12" maxlength="72" aria-describedby="password-help"' : 'maxlength="256"')+'><button class="password-toggle" type="button" data-password-toggle="'+name+'" aria-label="Show '+label.toLowerCase()+'">Show</button></span></label>'; }
+function setupPasswordToggles() { document.querySelectorAll('[data-password-toggle]').forEach(button=>button.onclick=()=>{ const input=button.parentElement.querySelector('input'); const shown=input.type==='text'; input.type=shown?'password':'text'; button.textContent=shown?'Show':'Hide'; button.setAttribute('aria-label',(shown?'Show ':'Hide ')+button.closest('label').childNodes[0].textContent.trim().toLowerCase()); }); }
+function setSubmitting(form, submitting, label) { const button=form.querySelector('[type="submit"]'); button.disabled=submitting; button.innerHTML=submitting?'<span class="button-spinner" aria-hidden="true"></span><span>'+label+'</span>':'<span>'+label+'</span><span aria-hidden="true">→</span>'; }
+function openAuth(mode='login', data={}) { showDialog('auth-dialog'); const email=escapeHtml(data.email || ''); if(mode==='signup') { $('auth-content').innerHTML=authFrame('CREATE ACCOUNT','Create your account','A simple account keeps your orders, payment updates, and subscriptions in one secure place.','<form class="auth-form" id="signup-form"><label class="auth-field">Full name<input name="name" type="text" autocomplete="name" required maxlength="100"></label><label class="auth-field">Email address<input name="email" type="email" autocomplete="email" required></label>'+passwordField('password','Password','new-password',true)+passwordField('confirmPassword','Confirm password','new-password',true)+'<p class="password-help" id="password-help">Use 12 to 72 characters with upper- and lower-case letters, a number, and a symbol.</p><p class="auth-alert" id="auth-error" role="alert" hidden></p><button class="auth-primary" type="submit"><span>Create account</span><span aria-hidden="true">→</span></button></form><p class="auth-switch">Already have an account? <button type="button" data-auth-mode="login">Sign in</button></p>'); $('signup-form').onsubmit=register; } else if(mode==='forgot') { $('auth-content').innerHTML=authFrame('PASSWORD RECOVERY','Reset your password','Enter your email and we’ll send a recovery code when email delivery is available for this site.','<form class="auth-form" id="forgot-form"><label class="auth-field">Email address<input name="email" type="email" autocomplete="email" value="'+email+'" required></label><p class="auth-alert" id="auth-error" role="alert" hidden></p><button class="auth-primary" type="submit"><span>Send recovery code</span><span aria-hidden="true">→</span></button></form><p class="auth-switch"><button type="button" data-auth-mode="login">Back to sign in</button></p>'); $('forgot-form').onsubmit=requestPasswordReset; } else if(mode==='reset') { $('auth-content').innerHTML=authFrame('PASSWORD RECOVERY','Choose a new password','Use the code sent to your inbox and choose a strong new password.','<form class="auth-form" id="reset-form"><label class="auth-field">Email address<input name="email" type="email" autocomplete="email" value="'+email+'" required></label><label class="auth-field">Recovery code<input name="otp" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{8}" maxlength="8" required></label>'+passwordField('password','New password','new-password',true)+passwordField('confirmPassword','Confirm password','new-password',true)+'<p class="password-help" id="password-help">Use 12 to 72 characters with upper- and lower-case letters, a number, and a symbol.</p><p class="auth-alert" id="auth-error" role="alert" hidden></p><button class="auth-primary" type="submit"><span>Reset password</span><span aria-hidden="true">→</span></button></form><p class="auth-switch"><button type="button" data-auth-mode="login">Back to sign in</button></p>'); $('reset-form').onsubmit=resetPassword; } else if(mode==='mfa') { $('auth-content').innerHTML=authFrame('TWO-STEP VERIFICATION','Confirm it’s you','Enter the code from your authenticator app or a recovery code to continue.','<form class="auth-form" id="mfa-form"><label class="auth-field">Authentication code<input name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="16" required autofocus></label><p class="auth-alert" id="auth-error" role="alert" hidden></p><button class="auth-primary" type="submit"><span>Verify and sign in</span><span aria-hidden="true">→</span></button></form><p class="auth-switch"><button type="button" data-auth-mode="login">Use a different account</button></p>'); $('mfa-form').onsubmit=event=>login(event,data); } else { $('auth-content').innerHTML=authFrame('ACCOUNT ACCESS','Welcome back','Sign in to manage your subscriptions, orders, and account.','<form class="auth-form" id="login-form"><label class="auth-field">Email address<input name="email" type="email" autocomplete="email" value="'+email+'" required autofocus></label>'+passwordField('password','Password','current-password')+'<div class="auth-options"><span></span><button type="button" class="auth-link" data-auth-mode="forgot">Forgot password?</button></div><p class="auth-alert" id="auth-error" role="alert" hidden></p><button class="auth-primary" type="submit"><span>Sign in</span><span aria-hidden="true">→</span></button>'+(state.providers.google ? '<div class="auth-divider"><span>or</span></div><a class="auth-google" href="/api/auth/google/start"><span aria-hidden="true">G</span>Continue with Google</a>' : '')+'</form><p class="auth-switch">New to Digi Nepal? <button type="button" data-auth-mode="signup">Create account</button></p>'); $('login-form').onsubmit=login; } setupPasswordToggles(); document.querySelectorAll('[data-auth-mode]').forEach(button=>button.onclick=()=>openAuth(button.dataset.authMode,{email:button.closest('form')?.elements.email?.value || data.email || ''})); }
+async function login(event, pending={}) { event.preventDefault(); const form=event.currentTarget, values=new FormData(form), email=String(pending.email || values.get('email') || '').trim(), password=String(pending.password || values.get('password') || ''); setSubmitting(form,true,'Signing in…'); const error=$('auth-error'); error.hidden=true; try { const result=await api('/auth/login',{method:'POST',body:JSON.stringify({email,password,code:values.get('code') || undefined})}); if(result.requires_mfa){openAuth('mfa',{email,password});return;} state.user=result.user; state.csrf=result.csrf || result.token || ''; localStorage.setItem('dn_csrf',state.csrf); closeDialog('auth-dialog'); renderAccount(); toast('You are signed in.'); } catch(err) { authAlert(err.message); setSubmitting(form,false,'Sign in'); } }
+function validateNewPassword(password, confirmPassword) { if (password !== confirmPassword) return 'Passwords do not match.'; if (password.length < 12 || password.length > 72) return 'Use a password between 12 and 72 characters.'; if (!/[a-z]/.test(password) || !/[A-Z]/.test(password) || !/\d/.test(password) || !/[^A-Za-z0-9]/.test(password)) return 'Use upper- and lower-case letters, a number, and a symbol.'; return ''; }
+async function register(event) { event.preventDefault(); const form=event.currentTarget, values=new FormData(form), password=String(values.get('password') || ''), confirmPassword=String(values.get('confirmPassword') || ''), validation = validateNewPassword(password, confirmPassword); if(validation){authAlert(validation);return;} setSubmitting(form,true,'Creating account…'); try { const email=String(values.get('email') || '').trim(), result=await api('/auth/register',{method:'POST',body:JSON.stringify({name:values.get('name'),email,password})}); if(result.user){ state.user=result.user; state.csrf=result.csrf || result.token || ''; localStorage.setItem('dn_csrf',state.csrf); closeDialog('auth-dialog'); renderAccount(); toast('Your account is ready.'); return; } $('auth-content').innerHTML=authFrame('EMAIL CONFIRMATION','Confirm your email','Enter the verification code sent to your inbox to complete your account.','<form class="auth-form" id="verify-form"><label class="auth-field">Email address<input name="email" type="email" autocomplete="email" value="'+escapeHtml(email)+'" required readonly></label><label class="auth-field">Verification code<input name="otp" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{8}" maxlength="8" required autofocus></label><p class="auth-alert" id="auth-error" role="alert" hidden></p><button class="auth-primary" type="submit"><span>Confirm email</span><span aria-hidden="true">→</span></button></form><p class="auth-switch"><button type="button" data-auth-mode="login">Back to sign in</button></p>'); $('verify-form').onsubmit=verifyRegistration; document.querySelectorAll('[data-auth-mode]').forEach(button=>button.onclick=()=>openAuth(button.dataset.authMode,{email})); } catch(err) { authAlert(err.message); setSubmitting(form,false,'Create account'); } }
+async function verifyRegistration(event) { event.preventDefault(); const form=event.currentTarget, values=new FormData(form); setSubmitting(form,true,'Confirming…'); try { await api('/auth/verify-otp',{method:'POST',body:JSON.stringify({email:values.get('email'),otp:values.get('otp')})}); openAuth('login',{email:values.get('email')}); toast('Your email is confirmed. Sign in to continue.'); } catch(err) { authAlert(err.message); setSubmitting(form,false,'Confirm email'); } }
+async function requestPasswordReset(event) { event.preventDefault(); const form=event.currentTarget, values=new FormData(form), email=String(values.get('email') || '').trim(); setSubmitting(form,true,'Sending…'); try { await api('/auth/forgot-password',{method:'POST',body:JSON.stringify({email})}); openAuth('reset',{email}); toast('If the address is eligible, a recovery code is on its way.'); } catch(err) { authAlert(err.message); setSubmitting(form,false,'Send recovery code'); } }
+async function resetPassword(event) { event.preventDefault(); const form=event.currentTarget, values=new FormData(form), password=String(values.get('password') || ''), confirmPassword=String(values.get('confirmPassword') || ''), validation = validateNewPassword(password, confirmPassword); if(validation){authAlert(validation);return;} setSubmitting(form,true,'Resetting…'); try { await api('/auth/reset-password',{method:'POST',body:JSON.stringify({email:values.get('email'),otp:values.get('otp'),password})}); openAuth('login',{email:values.get('email')}); toast('Password reset. You can now sign in.'); } catch(err) { authAlert(err.message); setSubmitting(form,false,'Reset password'); } }
+async function logoutUser() { try { await api('/auth/logout',{method:'POST',body:'{}'}); } catch { void 0; } state.user=null; state.csrf=''; localStorage.removeItem('dn_csrf'); renderAccount(); toast('You are signed out.'); }
+async function openOrders() { if(!state.user){openAuth();return;} showDialog('orders-dialog'); $('orders-content').innerHTML='<h2 id="orders-title">My orders</h2><p class="form-note">Loading your order history…</p>'; try { const result=await api('/orders/my?limit=25'); const orders=result.items || result; $('orders-content').innerHTML='<h2 id="orders-title">My orders</h2><div class="order-list">' + (orders.length ? orders.map(order => '<article class="order-item"><h3>'+escapeHtml(order.product_name)+'</h3><p>'+formatMoney(order.price)+' · Reference '+escapeHtml(String(order.id).slice(0,8).toUpperCase())+'</p><span class="status '+escapeHtml(order.status)+'">'+escapeHtml(order.status)+'</span>'+(order.note?'<p>'+escapeHtml(order.note)+'</p>':'')+(!order.payment_id&&order.status==='pending'?'<button class="order-pay" data-pay-order="'+escapeHtml(order.id)+'" data-pay-name="'+escapeHtml(order.product_name)+'" data-pay-price="'+escapeHtml(order.price)+'">Complete payment <span>→</span></button>':'')+'</article>').join('') : '<p class="form-note">You have not started an order yet.</p>') + '</div>'; $('orders-content').querySelectorAll('[data-pay-order]').forEach(button=>button.onclick=()=>{closeDialog('orders-dialog');openPayment({id:button.dataset.payOrder,product_name:button.dataset.payName,price:Number(button.dataset.payPrice)});}); } catch(error){ $('orders-content').innerHTML='<h2 id="orders-title">My orders</h2><p class="form-error">'+escapeHtml(error.message)+'</p>'; } }
+function setupSearch(){ const input=$('search-input'); $('search-button').onclick=()=>{showDialog('search-dialog'); input.focus();}; input.addEventListener('input',()=>{clearTimeout(state.searchTimer); state.searchTimer=setTimeout(()=>search(input.value),350);}); document.addEventListener('keydown',event=>{if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='k'){event.preventDefault();showDialog('search-dialog');input.focus();}if(event.key==='Escape')document.querySelectorAll('dialog[open]').forEach(dialog=>dialog.close());}); }
+function setupMotion(){
+  if(matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  document.documentElement.classList.add('motion-ready');
+  const targets = document.querySelectorAll('.section-heading, .reason-copy, .reason-list, .faq-layout > div, .steps li, .trustbar, .final-cta .container');
+  const observer = new IntersectionObserver(entries => entries.forEach(entry => {
+    if(entry.isIntersecting){ entry.target.classList.add('motion-visible'); observer.unobserve(entry.target); }
+  }), { threshold:.14, rootMargin:'0px 0px -28px' });
+  targets.forEach(target => observer.observe(target));
 }
-
-function logout() {
-  authToken = null; currentUser = null;
-  localStorage.removeItem('tv_token');
-  renderAuthBar();
-  showToast('Logged out successfully');
-}
-
-// ── AUTH MODAL ────────────────────────────────────────────────────────────────
-let authMode = 'login';
-let pendingAuthData = null;
-
-function openAuthModal(mode = 'login') {
-  authMode = mode;
-  pendingAuthData = null;
-  const overlay = document.getElementById('modal-overlay');
-  const content = document.getElementById('modal-content');
-  renderAuthForm(content);
-  overlay.classList.add('open');
-  overlay.setAttribute('aria-hidden', 'false');
-  document.body.style.overflow = 'hidden';
-}
-
-function renderAuthForm(content) {
-  const isLogin = authMode === 'login';
-  const isOtp = authMode === 'verify-otp';
-  
-  if (isOtp) {
-    content.innerHTML = `
-      <div style="text-align:center;margin-bottom:28px">
-        <div style="font-size:2.5rem;margin-bottom:12px">✉️</div>
-        <h2 style="font-size:1.5rem;font-weight:800;margin-bottom:6px">Check your email</h2>
-        <p style="color:var(--text2);font-size:.9rem">We sent a 6-digit code to <strong>${pendingAuthData.email}</strong></p>
-      </div>
-      <div id="auth-error" class="auth-error" hidden></div>
-      <form id="auth-form">
-        <div class="form-group">
-          <label>Verification Code</label>
-          <input type="text" id="auth-otp" placeholder="Enter 6-digit code" required autocomplete="off" style="text-align:center;font-size:1.5rem;letter-spacing:4px"/>
-        </div>
-        <button type="submit" class="btn-primary" id="auth-submit" style="width:100%;justify-content:center;padding:14px;margin-top:8px;font-size:1rem">
-          Verify & Complete
-        </button>
-      </form>
-      <p style="text-align:center;margin-top:20px;font-size:.9rem;color:var(--text2)">
-        Didn't receive it? <a href="#" id="auth-switch" style="color:var(--blue-light);font-weight:600">Register again</a>
-      </p>`;
-  } else {
-    content.innerHTML = `
-      <div style="text-align:center;margin-bottom:28px">
-        <div style="font-size:2.5rem;margin-bottom:12px">${isLogin ? '🔐' : '🚀'}</div>
-        <h2 style="font-size:1.5rem;font-weight:800;margin-bottom:6px">${isLogin ? 'Welcome Back' : 'Create Account'}</h2>
-        <p style="color:var(--text2);font-size:.9rem">${isLogin ? 'Login to place your order' : 'Join 25,000+ customers'}</p>
-      </div>
-      <div id="auth-error" class="auth-error" hidden></div>
-      <form id="auth-form">
-        ${!isLogin ? `<div class="form-group"><label>Full Name</label><input type="text" id="auth-name" placeholder="Your name" required autocomplete="name"/></div>` : ''}
-        <div class="form-group"><label>Email Address</label><input type="email" id="auth-email" placeholder="you@example.com" required autocomplete="email"/></div>
-        <div class="form-group"><label>Password</label><input type="password" id="auth-password" placeholder="${isLogin ? 'Your password' : 'Min 6 characters'}" required autocomplete="${isLogin ? 'current-password' : 'new-password'}"/></div>
-        <button type="submit" class="btn-primary" id="auth-submit" style="width:100%;justify-content:center;padding:14px;margin-top:8px;font-size:1rem">
-          ${isLogin ? '🔐 Login' : '🚀 Create Account'}
-        </button>
-      </form>
-      <p style="text-align:center;margin-top:20px;font-size:.9rem;color:var(--text2)">
-        ${isLogin ? "Don't have an account?" : 'Already have an account?'}
-        <a href="#" id="auth-switch" style="color:var(--blue-light);font-weight:600;margin-left:4px">${isLogin ? 'Register' : 'Login'}</a>
-      </p>`;
-  }
-  
-  document.getElementById('auth-switch').addEventListener('click', e => { 
-    e.preventDefault(); 
-    authMode = isLogin || isOtp ? 'register' : 'login'; 
-    renderAuthForm(content); 
-  });
-  document.getElementById('auth-form').addEventListener('submit', handleAuthSubmit);
-}
-
-async function handleAuthSubmit(e) {
-  e.preventDefault();
-  const btn = document.getElementById('auth-submit');
-  const errEl = document.getElementById('auth-error');
-  
-  if (authMode === 'verify-otp') {
-    const otp = document.getElementById('auth-otp').value.trim();
-    btn.disabled = true; btn.textContent = 'Verifying...'; errEl.hidden = true;
-    try {
-      const data = await apiFetch('/auth/verify-otp', { method: 'POST', body: JSON.stringify({ ...pendingAuthData, otp }) });
-      authToken = data.token; currentUser = data.user;
-      localStorage.setItem('tv_token', authToken);
-      closeModal(); renderAuthBar();
-      showToast(`Welcome to Digi Nepal, ${currentUser.name}! 🎉`, 'success');
-      if (pendingProductId) { const pid = pendingProductId; pendingProductId = null; placeOrder(pid); }
-    } catch (err) {
-      errEl.textContent = err.message; errEl.hidden = false;
-      btn.disabled = false; btn.textContent = 'Verify & Complete';
-    }
-    return;
-  }
-
-  const email = document.getElementById('auth-email').value.trim();
-  const password = document.getElementById('auth-password').value;
-  const name = document.getElementById('auth-name')?.value.trim();
-  
-  btn.disabled = true; btn.textContent = 'Please wait...'; errEl.hidden = true;
+async function search(value){ const holder=$('search-results'); if(value.trim().length<2){holder.innerHTML='<p class="form-note">Type at least two characters to search the catalogue.</p>';return;} if(state.searchController)state.searchController.abort(); state.searchController=new AbortController(); holder.innerHTML='<p class="form-note">Searching subscriptions…</p>'; try{const result=await api('/products?limit=6&search='+encodeURIComponent(value),{signal:state.searchController.signal});const products=result.items||result;holder.innerHTML=products.length?products.map(product=>'<button class="search-result" data-search-product="'+escapeHtml(product.id)+'"><span>'+escapeHtml(product.name)+'</span><small>'+formatMoney(product.price)+' →</small></button>').join(''):'<p class="form-note">No subscriptions match that search.</p>';holder.querySelectorAll('[data-search-product]').forEach(button=>button.onclick=()=>{closeDialog('search-dialog');openProduct(button.dataset.searchProduct);});}catch(error){if(error.name!=='AbortError')holder.innerHTML='<p class="form-error">'+escapeHtml(error.message)+'</p>';}}
+async function loadProviders(){ try { state.providers = await api('/auth/providers'); } catch { state.providers = { google:false }; } }
+async function loadSettings(){try{const settings=await api('/settings');$('footer-text').textContent=settings.footer_text||$('footer-text').textContent;if(settings.contact_email){$('contact-email').textContent=settings.contact_email;$('contact-email').href='mailto:'+settings.contact_email;}if(settings.whatsapp_number){$('contact-whatsapp').href='https://wa.me/'+settings.whatsapp_number;}}catch{void 0;}}
+function bindUI(){ $('menu-button').onclick=()=>{const nav=document.querySelector('.nav-shell'),expanded=nav.classList.toggle('menu-open');$('menu-button').setAttribute('aria-expanded',String(expanded));}; document.querySelectorAll('[data-close]').forEach(button=>button.onclick=()=>closeDialog(button.dataset.close)); $('footer-login').onclick=openAuth;$('footer-orders').onclick=openOrders;$('reset-filter').onclick=()=>selectCategory('');$('product-sort').onchange=event=>{state.sort=event.target.value;state.page=1;loadProducts();};$('discovery-prev').onclick=()=>$('discovery-rail').scrollBy({left:-320,behavior:'smooth'});$('discovery-next').onclick=()=>$('discovery-rail').scrollBy({left:320,behavior:'smooth'});setupDiscoveryAutoScroll();document.querySelectorAll('dialog').forEach(dialog=>dialog.addEventListener('click',event=>{if(event.target===dialog)dialog.close();}));}
+function setupDiscoveryAutoScroll(){ const rail=$('discovery-rail'); if(matchMedia('(prefers-reduced-motion: reduce)').matches||!rail) return; let paused=false; let resumeTimer; const pause=()=>{paused=true;clearTimeout(resumeTimer);}; const resume=()=>{clearTimeout(resumeTimer);resumeTimer=setTimeout(()=>{paused=false;},2400);}; ['mouseenter','focusin','pointerdown','touchstart'].forEach(type=>rail.addEventListener(type,pause,{passive:true})); ['mouseleave','focusout'].forEach(type=>rail.addEventListener(type,resume,{passive:true})); setInterval(()=>{if(paused||rail.scrollWidth<=rail.clientWidth)return;if(rail.scrollLeft+rail.clientWidth>=rail.scrollWidth-2)rail.scrollTo({left:0,behavior:'smooth'});else rail.scrollLeft+=1;},90);}
+async function init(){ $('year').textContent=new Date().getFullYear();bindUI();setupSearch();setupMotion();setProductLoading();await Promise.allSettled([initAccount(),loadProviders(),loadCategories(),loadSettings(),loadProducts()]); }
+function paymentReference(order) { return String(order.id || '').slice(0, 8).toUpperCase(); }
+async function openPaymentRestored(order) {
+  showDialog('payment-dialog');
+  $('payment-content').innerHTML='<div class="payment-loading"><p class="eyebrow">SECURE PAYMENT</p><h2 id="payment-title">Preparing your payment</h2><p class="form-note">Loading available payment methods…</p></div>';
   try {
-    const endpoint = authMode === 'login' ? '/auth/login' : '/auth/register';
-    const body = authMode === 'login' ? { email, password } : { email, password, name };
-    const data = await apiFetch(endpoint, { method: 'POST', body: JSON.stringify(body) });
-    
-    if (data.requires_otp) {
-        pendingAuthData = { email, password, name };
-        authMode = 'verify-otp';
-        renderAuthForm(document.getElementById('modal-content'));
-        return;
-    }
-    
-    authToken = data.token; currentUser = data.user;
-    localStorage.setItem('tv_token', authToken);
-    closeModal(); renderAuthBar();
-    showToast(`Welcome back, ${currentUser.name}! 🎉`, 'success');
-    if (pendingProductId) { const pid = pendingProductId; pendingProductId = null; placeOrder(pid); }
-  } catch (err) {
-    errEl.textContent = err.message; errEl.hidden = false;
-    btn.disabled = false; btn.textContent = authMode === 'login' ? '🔐 Login' : '🚀 Create Account';
-  }
+    const settings=await api('/settings'); const methods=(settings.payment_methods||'eSewa, Khalti, Bank transfer').split(',').map(value=>value.trim()).filter(Boolean);
+    const accountId=settings.payment_account || '9705985657'; const amount=Number(order.price||0); const reference=paymentReference(order);
+    const qr=settings.payment_qr_url || 'https://api.qrserver.com/v1/create-qr-code/?size=240x240&data='+encodeURIComponent('Digi Nepal '+accountId+' NPR '+amount+' '+reference);
+    $('payment-content').innerHTML='<div class="payment-flow"><div class="payment-step-label"><span>STEP 1 OF 2</span><strong>Pay securely, then confirm</strong></div><div class="payment-qr-card"><div class="payment-method-badges">'+methods.map(method=>'<span>'+escapeHtml(method)+'</span>').join('')+'</div><img class="payment-qr payment-qr-large" src="'+escapeHtml(qr)+'" alt="Payment QR code for '+formatMoney(amount)+'"><p class="payment-amount-label">AMOUNT TO PAY</p><strong class="payment-amount">'+formatMoney(amount)+'</strong><p class="payment-account">eSewa / Khalti ID <b>'+escapeHtml(accountId)+'</b></p><p class="payment-reference">Order reference: <b>'+escapeHtml(reference)+'</b></p></div><p class="payment-instructions">'+escapeHtml(settings.payment_instructions||'Scan the QR, include your order reference, and keep the receipt ready.')+'</p><button class="auth-primary" id="payment-next" type="button"><span>I\'ve paid — enter details</span><span aria-hidden="true">→</span></button><button class="payment-back" type="button" data-close="payment-dialog">I\'ll do this later</button></div>';
+    $('payment-next').onclick=()=>renderPaymentDetails(order,settings,methods);
+  } catch(error) { $('payment-content').innerHTML='<h2 id="payment-title">Payment details are unavailable</h2><p class="form-error">'+escapeHtml(error.message)+'</p>'; }
 }
-
-// ── DATA ──────────────────────────────────────────────────────────────────────
-let allProducts = [], allCategories = [], globalSettings = {};
-
-async function loadData() {
+function renderPaymentDetails(order,settings,methods) {
+  const reference=paymentReference(order);
+  $('payment-content').innerHTML='<div class="payment-flow"><div class="payment-step-label"><span>STEP 2 OF 2</span><strong>Confirm your payment</strong></div><p class="form-note">Enter the transaction reference exactly as shown in your payment app and attach the receipt.</p><form class="payment-form" id="payment-form"><label class="auth-field">Your full name<input name="payer_name" autocomplete="name" value="'+escapeHtml(state.user?.name||'')+'" required minlength="2" maxlength="100"></label><label class="auth-field">Payment method<select name="payment_method" required>'+methods.map(method=>'<option value="'+escapeHtml(method)+'">'+escapeHtml(method)+'</option>').join('')+'</select></label><label class="auth-field">Transaction / reference ID<input name="transaction_id" autocomplete="off" required minlength="3" maxlength="100" placeholder="For example, TX12345678"></label><label class="auth-field">Phone number <span class="field-optional">Optional</span><input name="phone" type="tel" autocomplete="tel" maxlength="40" placeholder="98xxxxxxxx"></label><label class="auth-field receipt-field">Payment receipt<input name="receipt" type="file" accept="image/png,image/jpeg,image/webp" required><span class="file-help">PNG, JPG, or WebP · maximum 5 MB</span></label><label class="auth-field">Additional note <span class="field-optional">Optional</span><textarea name="note" maxlength="1000" rows="3" placeholder="Anything the payment reviewer should know?"></textarea></label><p class="payment-order-reference">Order reference <b>'+escapeHtml(reference)+'</b></p><p class="auth-alert" id="payment-error" role="alert" hidden></p><button class="auth-primary" type="submit"><span>Submit payment proof</span><span aria-hidden="true">→</span></button></form><button class="payment-back" type="button" id="payment-back">← Back to QR</button></div>';
+  $('payment-form').onsubmit=event=>submitPaymentClassic(event,order); $('payment-back').onclick=()=>openPayment(order);
+}
+async function submitPaymentClassic(event,order) { event.preventDefault(); const form=event.currentTarget, values=new FormData(form), file=values.get('receipt'), error=$('payment-error'); error.hidden=true; if(!(file instanceof File)||!file.size){error.textContent='Attach your payment receipt to continue.';error.hidden=false;return;} setSubmitting(form,true,'Uploading receipt…'); try { const upload=new FormData(); upload.append('image',file); upload.append('purpose','receipt'); const media=await api('/upload',{method:'POST',body:upload}); setSubmitting(form,true,'Submitting payment…'); await api('/payments',{method:'POST',body:JSON.stringify({order_id:order.id,payer_name:values.get('payer_name'),transaction_id:values.get('transaction_id'),payment_method:values.get('payment_method'),phone:values.get('phone')||'',note:values.get('note')||'',media_id:media.id})}); const reference=paymentReference(order); $('payment-content').innerHTML='<div class="payment-success"><span class="payment-success-mark" aria-hidden="true">✓</span><p class="eyebrow">PAYMENT RECEIVED</p><h2 id="payment-title">Thanks, your proof is in</h2><p>We’ll review the transaction and update your order after verification.</p><div class="payment-success-summary"><span>Order reference</span><b>'+escapeHtml(reference)+'</b><span>Amount</span><b>'+formatMoney(order.price)+'</b></div><button class="auth-primary" type="button" id="payment-done">Done</button></div>'; $('payment-done').onclick=()=>{closeDialog('payment-dialog');openOrders();}; } catch(errorResponse) { error.textContent=errorResponse.message; error.hidden=false; setSubmitting(form,false,'Submit payment proof'); } }
+function setupLegacyPaymentActions() {
+  const detail = $('product-detail'); if (!detail) return;
+  const observer = new MutationObserver(() => {
+    const start = $('start-order'); if (!start || detail.querySelector('.payment-shortcuts')) return;
+    const id = start.dataset.id; const wrap = document.createElement('div'); wrap.className = 'payment-shortcuts';
+    const qr = document.createElement('button'); qr.type = 'button'; qr.className = 'payment-alt payment-alt-primary'; qr.textContent = 'Pay via QR / eSewa / Khalti'; qr.onclick = () => startOrder(id);
+    const whatsapp = document.createElement('button'); whatsapp.type = 'button'; whatsapp.className = 'payment-alt'; whatsapp.textContent = 'Order via WhatsApp'; whatsapp.onclick = () => startWhatsAppOrder(id);
+    wrap.append(qr, whatsapp); start.insertAdjacentElement('afterend', wrap);
+  });
+  observer.observe(detail, { childList: true, subtree: true });
+}
+async function startWhatsAppOrder(productId) {
+  if (!state.user) { closeDialog('product-dialog'); openAuth('login'); return; }
   try {
-    const [cats, prods, sets] = await Promise.allSettled([
-      apiFetch('/categories'),
-      apiFetch('/products'),
-      apiFetch('/settings')
-    ]);
-    allCategories = cats.status === 'fulfilled' ? cats.value : [];
-    allProducts = prods.status === 'fulfilled' ? prods.value : [];
-    globalSettings = sets.status === 'fulfilled' ? sets.value : {};
-    
-    if (allProducts.length === 0) throw new Error('No products found');
-  } catch (err) {
-    console.error('API Error:', err);
-    loadStaticData();
-    return;
-  }
-  renderFlashSale();
-  renderCategories();
-  setTimeout(initScrollAnimations, 100);
+    const order=await api('/orders',{method:'POST',body:JSON.stringify({product_id:productId,request_key:crypto.randomUUID()})}); const settings=await api('/settings');
+    if (!settings.whatsapp_number) throw new Error('WhatsApp support is not configured.');
+    const message='Hello Digi Nepal, I want to order '+order.product_name+' ('+formatMoney(order.price)+'). Order reference: '+paymentReference(order);
+    window.open('https://wa.me/'+settings.whatsapp_number+'?text='+encodeURIComponent(message),'_blank','noopener'); toast('Order created. Continue in WhatsApp to complete it.');
+  } catch(error) { toast(error.message,'error'); }
 }
-
-// ── ORDER FLOW ────────────────────────────────────────────────────────────────
-let pendingProductId = null;
-
-async function placeOrder(productId) {
-  if (!currentUser) {
-    pendingProductId = productId;
-    closeModal();
-    openAuthModal('login');
-    return;
-  }
-  const btn = document.getElementById('modal-buy-btn');
-  const originalText = btn.innerHTML;
-  btn.disabled = true; 
-  btn.innerHTML = '<span class="spinner"></span> Processing Order...';
-  
-  try {
-    const data = await apiFetch('/orders', { method: 'POST', body: JSON.stringify({ product_id: productId }) });
-    
-    // Instead of auto-opening (which is often blocked), show a confirmation screen with a big button
-    const content = document.getElementById('modal-content');
-    content.innerHTML = `
-      <div style="text-align:center;padding:20px 0">
-        <div style="font-size:3.5rem;margin-bottom:16px">✅</div>
-        <h2 style="font-size:1.6rem;font-weight:800;margin-bottom:8px">Order Created!</h2>
-        <p style="color:var(--text2);font-size:.95rem;line-height:1.65;margin-bottom:24px">
-          Order <strong>#${data.short_id}</strong> has been registered. <br/>
-          Click the button below to send your order details to us on WhatsApp.
-        </p>
-        <a href="${data.wa_url}" target="_blank" class="btn-primary" style="width:100%;justify-content:center;padding:16px;font-size:1.1rem;text-decoration:none;display:flex">
-          💬 Continue to WhatsApp
-        </a>
-        <button onclick="closeModal()" style="margin-top:12px;background:none;border:none;color:var(--text3);cursor:pointer;font-size:.9rem">I'll do it later</button>
-      </div>
-    `;
-    showToast(`Order #${data.short_id} created!`, 'success');
-  } catch (err) {
-    showToast(err.message, 'error');
-    btn.disabled = false; 
-    btn.innerHTML = originalText;
-  }
-}
-
-// ── MY ORDERS ─────────────────────────────────────────────────────────────────
-async function showMyOrders() {
-  const overlay = document.getElementById('modal-overlay');
-  const content = document.getElementById('modal-content');
-  content.innerHTML = `<div style="text-align:center;padding:20px 0"><div style="font-size:2rem;margin-bottom:8px">📦</div><h2 style="font-weight:800;margin-bottom:4px">My Orders</h2><p style="color:var(--text2);font-size:.9rem">Loading...</p></div>`;
-  overlay.classList.add('open'); overlay.setAttribute('aria-hidden', 'false'); document.body.style.overflow = 'hidden';
-  try {
-    const orders = await apiFetch('/orders/my');
-    const statusColor = { pending: '#f59e0b', verified: '#10b981', rejected: '#ef4444', delivered: '#3b82f6' };
-    const statusLabel = { pending: '⏳ Pending', verified: '✅ Verified', rejected: '❌ Rejected', delivered: '📬 Delivered' };
-    content.innerHTML = `
-      <div style="display:flex;align-items:center;gap:12px;margin-bottom:24px">
-        <span style="font-size:1.8rem">📦</span>
-        <div><h2 style="font-weight:800;margin:0">My Orders</h2><p style="color:var(--text2);font-size:.85rem;margin:0">${orders.length} order${orders.length !== 1 ? 's' : ''}</p></div>
-      </div>
-      ${orders.length === 0
-        ? `<div style="text-align:center;padding:40px 0;color:var(--text3)"><div style="font-size:3rem;margin-bottom:12px">🛒</div><p>No orders yet. Browse products and place your first order!</p></div>`
-        : orders.map(o => `
-          <div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:12px">
-            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
-              <div>
-                <div style="font-weight:700;font-size:1rem;margin-bottom:4px">${o.product_name}</div>
-                <div style="font-size:.8rem;color:var(--text3)">Order #${o.id.split('-')[0].toUpperCase()} · ${new Date(o.created_at).toLocaleDateString()}</div>
-              </div>
-              <div style="text-align:right">
-                <div style="font-size:1.1rem;font-weight:800;color:var(--blue-light)">Rs ${o.price.toLocaleString()}</div>
-                <div style="font-size:.8rem;font-weight:600;color:${statusColor[o.status]}">${statusLabel[o.status]}</div>
-              </div>
-            </div>
-            ${o.status === 'pending' ? `<div style="margin-top:10px;padding:10px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.2);border-radius:8px;font-size:.82rem;color:#fcd34d">💬 Send your payment screenshot on WhatsApp to confirm your order.</div>` : ''}
-            ${o.note ? `<div style="margin-top:8px;font-size:.82rem;color:var(--text2)">📝 ${o.note}</div>` : ''}
-          </div>`).join('')}`;
-  } catch (err) {
-    content.innerHTML = `<div style="text-align:center;color:var(--sale);padding:40px">${err.message}</div>`;
-  }
-}
-
-// ── PRODUCT CARD ──────────────────────────────────────────────────────────────
-const fmt = n => `Rs ${n.toLocaleString()}`;
-function getBadgeClass(b) { return b === 'sale' ? 'badge-sale' : b === 'popular' ? 'badge-popular' : b === 'cheap' ? 'badge-cheap' : b === 'lifetime' ? 'badge-lifetime' : 'badge-popular'; }
-function getBadgeLabel(b) { return b === 'sale' ? '🔥 Flash Sale' : b === 'popular' ? '⭐ Popular' : b === 'cheap' ? '💚 Cheap Deal' : b === 'lifetime' ? '♾️ Lifetime' : '⭐ Popular'; }
-
-function createProductCard(product) {
-  const icon = product.category_icon || '📦';
-  const imgHTML = product.image_url
-    ? `<img src="${product.image_url}" alt="${product.name}" class="card-img"/>`
-    : `<div class="card-icon">${icon}</div>`;
-  const card = document.createElement('div');
-  card.className = 'product-card';
-  card.id = 'card-' + product.id;
-  const features = typeof product.features === 'string' ? JSON.parse(product.features || '[]') : (product.features || []);
-  card.innerHTML = `
-    ${product.badge ? `<div class="card-badge ${getBadgeClass(product.badge)}">${getBadgeLabel(product.badge)}</div>` : '<div style="height:22px"></div>'}
-    ${imgHTML}
-    <div class="card-rating">★★★★★ <span style="color:var(--text3)">${product.rating}</span></div>
-    <div class="card-name">${product.name}</div>
-    <div class="card-category">${product.category_name || ''}</div>
-    <div class="card-price-row">
-      <span class="card-price">${fmt(product.price)}</span>
-      ${product.original_price ? `<span class="card-original">${fmt(product.original_price)}</span>` : ''}
-      ${product.discount ? `<span class="card-discount">-${product.discount}%</span>` : ''}
-    </div>
-    <div class="card-action">
-      <button class="btn-card btn-card-buy" data-id="${product.id}">Buy Now</button>
-      ${currentUser?.role === 'admin' ? `<button class="btn-card btn-card-edit" style="background:var(--surface2);color:var(--blue-light);border:1px solid var(--border)" data-id="${product.id}">✎ Edit</button>` : `<button class="btn-card btn-card-wish" aria-label="Wishlist">♡</button>`}
-    </div>`;
-  card.addEventListener('click', e => { if (!e.target.classList.contains('btn-card')) openProductModal(product, features); });
-  card.querySelector('.btn-card-buy').addEventListener('click', e => { e.stopPropagation(); openProductModal(product, features); });
-  if (currentUser?.role === 'admin') {
-    card.querySelector('.btn-card-edit').addEventListener('click', e => {
-      e.stopPropagation();
-      window.open(`/admin?editProduct=${product.id}`, '_blank');
-    });
-  } else {
-    card.querySelector('.btn-card-wish').addEventListener('click', e => {
-      e.stopPropagation();
-      const b = e.target; b.textContent = b.textContent === '♡' ? '♥' : '♡';
-      showToast(b.textContent === '♥' ? 'Added to wishlist ♥' : 'Removed from wishlist', 'success');
-    });
-  }
-  return card;
-}
-
-// ── PRODUCT MODAL ─────────────────────────────────────────────────────────────
-function openProductModal(product, features) {
-  const overlay = document.getElementById('modal-overlay');
-  const content = document.getElementById('modal-content');
-  const feats = features || (typeof product.features === 'string' ? JSON.parse(product.features || '[]') : (product.features || []));
-  const imgHTML = product.image_url
-    ? `<img src="${product.image_url}" alt="${product.name}" style="width:80px;height:80px;object-fit:cover;border-radius:14px;margin-bottom:16px;border:1px solid var(--border)"/>`
-    : `<div class="modal-product-icon">${product.category_icon || '📦'}</div>`;
-  content.innerHTML = `
-    ${imgHTML}
-    <div class="modal-badge-row">
-      ${product.badge ? `<span class="card-badge ${getBadgeClass(product.badge)}">${getBadgeLabel(product.badge)}</span>` : ''}
-      <span class="card-badge" style="background:rgba(99,179,237,0.1);border:1px solid rgba(99,179,237,0.3);color:#93c5fd">⭐ ${product.rating}/5.0</span>
-    </div>
-    <div class="modal-name">${product.name}</div>
-    <div class="modal-category">${product.category_name || ''}</div>
-    <div class="modal-desc">${product.description || ''}</div>
-    <div class="modal-price-box">
-      <div>
-        <div class="modal-price-label">Your Price</div>
-        <div class="modal-price-val">${fmt(product.price)}</div>
-        ${product.original_price ? `<div class="modal-original">${fmt(product.original_price)}</div>` : ''}
-        ${product.discount ? `<div class="modal-save">You save ${fmt(product.original_price - product.price)} (${product.discount}% OFF)</div>` : ''}
-      </div>
-      <div style="text-align:right">
-        <div class="modal-price-label">Delivery</div>
-        <div style="color:var(--success);font-weight:700">⚡ Instant</div>
-      </div>
-    </div>
-    ${feats.length ? `<ul class="modal-features">${feats.map(f => `<li>${f}</li>`).join('')}</ul>` : ''}
-    <div style="margin-top:24px;display:flex;flex-direction:column;gap:10px">
-      <button class="btn-primary" id="modal-buy-btn" style="width:100%;justify-content:center;padding:14px;font-size:1rem" data-id="${product.id}">
-        💬 Order via WhatsApp — ${fmt(product.price)}
-      </button>
-      <button class="btn-qr-pay" id="modal-qr-btn" style="width:100%;justify-content:center;padding:14px;font-size:1rem;background:linear-gradient(135deg,#10b981,#059669);color:#fff;border:none;border-radius:10px;cursor:pointer;font-family:inherit;font-weight:700;display:flex;align-items:center;gap:8px" data-id="${product.id}">
-        📱 Pay via QR / eSewa / Khalti
-      </button>
-      ${currentUser?.role === 'admin' ? `
-        <button onclick="window.open('/admin?editProduct=${product.id}', '_blank')" style="width:100%;justify-content:center;padding:12px;font-size:.9rem;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:10px;cursor:pointer;margin-top:4px">
-          ⚙️ Admin: Edit Product Details
-        </button>` : ''}
-      <p style="text-align:center;font-size:.8rem;color:var(--text3);margin-top:2px">
-        ${currentUser ? `Logged in as <strong>${currentUser.name}</strong>` : '🔐 Login required to place order'}
-      </p>
-    </div>`;
-  overlay.classList.add('open'); overlay.setAttribute('aria-hidden', 'false'); document.body.style.overflow = 'hidden';
-  document.getElementById('modal-buy-btn').addEventListener('click', () => placeOrder(product.id));
-  document.getElementById('modal-qr-btn').addEventListener('click', () => openQRPaymentFlow(product));
-}
-
-// ── QR PAYMENT FLOW ───────────────────────────────────────────────────────────
-let qrPaymentProduct = null;
-let qrPaymentOrderId = null;
-
-function openQRPaymentFlow(product) {
-  if (!currentUser) {
-    pendingProductId = product.id;
-    closeModal();
-    openAuthModal('login');
-    return;
-  }
-  qrPaymentProduct = product;
-  qrPaymentOrderId = null;
-  renderQRStep1();
-}
-
-function renderQRStep1() {
-  const overlay = document.getElementById('modal-overlay');
-  const content = document.getElementById('modal-content');
-  const product = qrPaymentProduct;
-  const esewaId = '9705985657';
-  const qrUrl = globalSettings.payment_qr_url || `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=esewa%3A${esewaId}%3Famount%3D${product.price}`;
-  content.innerHTML = `
-    <div style="text-align:center;margin-bottom:20px">
-      <div style="font-size:2rem;margin-bottom:8px">📱</div>
-      <h2 style="font-size:1.4rem;font-weight:800;margin-bottom:4px">Pay via QR Code</h2>
-      <p style="color:var(--text2);font-size:.9rem">Scan &amp; pay, then fill in your details</p>
-    </div>
-    <div class="qr-pay-box">
-      <div class="qr-methods">
-        <span class="qr-method-badge">eSewa</span>
-        <span class="qr-method-badge">Khalti</span>
-        <span class="qr-method-badge">Bank Transfer</span>
-        <span class="qr-method-badge">IME Pay</span>
-      </div>
-      <img src="${qrUrl}" alt="QR Code" class="qr-img" />
-      <div class="qr-amount-label">Amount to Pay</div>
-      <div class="qr-amount">${fmt(product.price)}</div>
-      <div class="qr-esewa-id">eSewa / Khalti ID: <strong>${esewaId}</strong></div>
-      <p style="font-size:.8rem;color:var(--text3);text-align:center;margin-top:8px">Screenshot your payment confirmation — you'll need it next.</p>
-    </div>
-    <button id="qr-next-btn" class="btn-primary" style="width:100%;justify-content:center;padding:14px;margin-top:20px;font-size:1rem">
-      ✅ I've Paid — Submit Details →
-    </button>
-    <button onclick="openProductModal(qrPaymentProduct)" style="width:100%;margin-top:8px;padding:10px;background:none;border:1px solid var(--border);border-radius:8px;color:var(--text2);cursor:pointer;font-family:inherit;font-size:.88rem">
-      ← Back to Product
-    </button>`;
-  overlay.classList.add('open'); overlay.setAttribute('aria-hidden', 'false'); document.body.style.overflow = 'hidden';
-  document.getElementById('qr-next-btn').addEventListener('click', renderQRStep2);
-}
-
-function renderQRStep2() {
-  const content = document.getElementById('modal-content');
-  const product = qrPaymentProduct;
-  content.innerHTML = `
-    <div style="text-align:center;margin-bottom:20px">
-      <div style="font-size:2rem;margin-bottom:8px">📝</div>
-      <h2 style="font-size:1.4rem;font-weight:800;margin-bottom:4px">Payment Details</h2>
-      <p style="color:var(--text2);font-size:.88rem">Fill in your info so admin can verify</p>
-    </div>
-    <div id="qr-form-error" style="display:none;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);color:#fca5a5;padding:10px 14px;border-radius:8px;font-size:.88rem;margin-bottom:14px"></div>
-    <div class="form-group"><label>Your Full Name *</label><input id="qp-name" placeholder="Name as on payment app" value="${currentUser ? currentUser.name : ''}"/></div>
-    <div class="form-group"><label>Payment Method *</label>
-      <select id="qp-method">
-        <option value="">— Select —</option>
-        <option value="eSewa">eSewa</option>
-        <option value="Khalti">Khalti</option>
-        <option value="IME Pay">IME Pay</option>
-        <option value="Bank Transfer">Bank Transfer</option>
-        <option value="Connect IPS">Connect IPS</option>
-        <option value="Other">Other</option>
-      </select>
-    </div>
-    <div class="form-group"><label>Transaction / Reference ID *</label><input id="qp-txn" placeholder="e.g. TX12345678"/></div>
-    <div class="form-group"><label>Your Phone Number</label><input id="qp-phone" type="tel" placeholder="98xxxxxxxx"/></div>
-    <div class="form-group">
-      <label>Payment Screenshot <span style="color:var(--text3);font-weight:400">(optional but recommended)</span></label>
-      <div id="qp-upload-zone" style="border:2px dashed var(--border);border-radius:12px;padding:24px;text-align:center;cursor:pointer;transition:var(--transition);background:var(--surface2)" onmouseenter="this.style.borderColor='var(--blue)'" onmouseleave="this.style.borderColor='var(--border)'">
-        <div style="font-size:1.8rem;margin-bottom:6px">📷</div>
-        <div style="font-size:.88rem;color:var(--text2);margin-bottom:4px">Click to upload screenshot</div>
-        <div style="font-size:.75rem;color:var(--text3)">JPG, PNG, WebP — max 5MB</div>
-        <input type="file" id="qp-ss-file" accept="image/*" style="display:none"/>
-      </div>
-      <div id="qp-ss-preview" style="margin-top:10px;display:none;align-items:center;gap:10px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px">
-        <img id="qp-ss-thumb" style="width:56px;height:56px;object-fit:cover;border-radius:8px;border:1px solid var(--border)"/>
-        <div>
-          <div id="qp-ss-name" style="font-size:.82rem;font-weight:600;color:var(--text)"></div>
-          <div style="font-size:.75rem;color:var(--success)">✓ Ready to upload</div>
-        </div>
-        <button onclick="document.getElementById('qp-ss-file').value='';document.getElementById('qp-ss-preview').style.display='none';document.getElementById('qp-upload-zone').style.display='block'" style="margin-left:auto;background:none;border:none;color:var(--text3);cursor:pointer;font-size:1rem">✕</button>
-      </div>
-    </div>
-    <div class="form-group"><label>Additional Note <span style="color:var(--text3);font-weight:400">(optional)</span></label><textarea id="qp-note" style="min-height:60px" placeholder="Any extra info..."></textarea></div>
-    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:16px;font-size:.88rem;color:var(--text2)">
-      <strong style="color:var(--text)">Order Summary</strong><br/>
-      Product: ${product.name}<br/>
-      Amount: <strong style="color:var(--blue-light)">${fmt(product.price)}</strong>
-    </div>
-    <button id="qp-submit-btn" class="btn-primary" style="width:100%;justify-content:center;padding:14px;font-size:1rem">📤 Submit Payment Proof</button>
-    <button onclick="renderQRStep1()" style="width:100%;margin-top:8px;padding:10px;background:none;border:1px solid var(--border);border-radius:8px;color:var(--text2);cursor:pointer;font-family:inherit;font-size:.88rem">← Back to QR</button>`;
-
-  // File upload zone click
-  document.getElementById('qp-upload-zone').addEventListener('click', () => document.getElementById('qp-ss-file').click());
-  document.getElementById('qp-ss-file').addEventListener('change', e => {
-    const file = e.target.files[0]; if (!file) return;
-    const reader = new FileReader();
-    reader.onload = ev => {
-      document.getElementById('qp-ss-thumb').src = ev.target.result;
-      document.getElementById('qp-ss-name').textContent = file.name;
-      document.getElementById('qp-ss-preview').style.display = 'flex';
-      document.getElementById('qp-upload-zone').style.display = 'none';
-    };
-    reader.readAsDataURL(file);
-  });
-
-  document.getElementById('qp-submit-btn').addEventListener('click', async () => {
-    const errEl = document.getElementById('qr-form-error');
-    const name = document.getElementById('qp-name').value.trim();
-    const method = document.getElementById('qp-method').value;
-    const txn = document.getElementById('qp-txn').value.trim();
-    if (!name || !method || !txn) { errEl.textContent = 'Please fill in Name, Payment Method and Transaction ID.'; errEl.style.display = 'block'; return; }
-    errEl.style.display = 'none';
-    const btn = document.getElementById('qp-submit-btn');
-    btn.disabled = true; btn.textContent = 'Uploading...';
-
-    // Upload screenshot if selected
-    let screenshotUrl = '';
-    const ssFile = document.getElementById('qp-ss-file').files[0];
-    if (ssFile) {
-      try {
-        const fd = new FormData(); fd.append('image', ssFile);
-        const headers = {}; if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
-        const res = await fetch(API + '/upload', { method: 'POST', headers, body: fd });
-        const d = await res.json();
-        if (!res.ok) throw new Error(d.error || 'Upload failed');
-        screenshotUrl = d.url;
-      } catch (uploadErr) {
-        errEl.textContent = 'Screenshot upload failed: ' + uploadErr.message; errEl.style.display = 'block';
-        btn.disabled = false; btn.textContent = '📤 Submit Payment Proof'; return;
-      }
-    }
-
-    btn.textContent = 'Submitting...';
-    try {
-      await apiFetch('/payments', { method: 'POST', body: JSON.stringify({
-        order_id: qrPaymentOrderId, product_name: product.name, amount: product.price,
-        payer_name: name, transaction_id: txn, payment_method: method,
-        phone: document.getElementById('qp-phone').value.trim(),
-        note: document.getElementById('qp-note').value.trim(),
-        screenshot_url: screenshotUrl
-      })});
-      renderQRStep3();
-    } catch (err) {
-      errEl.textContent = err.message; errEl.style.display = 'block';
-      btn.disabled = false; btn.textContent = '📤 Submit Payment Proof';
-    }
-  });
-}
-
-function renderQRStep3() {
-  const content = document.getElementById('modal-content');
-  content.innerHTML = `
-    <div style="text-align:center;padding:20px 0">
-      <div style="font-size:4rem;margin-bottom:16px">🎉</div>
-      <h2 style="font-size:1.5rem;font-weight:800;margin-bottom:8px">Payment Submitted!</h2>
-      <p style="color:var(--text2);font-size:.95rem;line-height:1.65;margin-bottom:24px">
-        Your payment details have been received. Our admin will verify your transaction within <strong>1–24 hours</strong>.
-        You'll get an email once verified! 📧
-      </p>
-      <div style="background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.3);border-radius:12px;padding:20px;margin-bottom:24px">
-        <div style="font-size:.85rem;color:var(--text3);margin-bottom:4px">Payment for</div>
-        <div style="font-weight:800;color:var(--success);font-size:1.1rem">${qrPaymentProduct.name}</div>
-        <div style="color:var(--text2);font-size:.9rem;margin-top:4px">Amount: ${fmt(qrPaymentProduct.price)}</div>
-      </div>
-      <button onclick="closeModal()" class="btn-primary" style="width:100%;justify-content:center;padding:14px;font-size:1rem">✓ Done</button>
-    </div>`;
-}
-
-// ── FLASH SALE ────────────────────────────────────────────────────────────────
-function renderFlashSale() {
-  const grid = document.getElementById('flash-grid');
-  grid.innerHTML = '';
-  const flash = allProducts.filter(p => p.badge === 'sale').slice(0, 6);
-  if (!flash.length) { document.querySelector('.flash-sale').style.display = 'none'; return; }
-  flash.forEach(p => grid.appendChild(createProductCard(p)));
-}
-
-// ── CATEGORIES ────────────────────────────────────────────────────────────────
-function renderCategories() {
-  const container = document.getElementById('category-sections');
-  container.innerHTML = '';
-  allCategories.forEach(cat => {
-    const prods = allProducts.filter(p => p.category_id === cat.id);
-    if (!prods.length) return;
-    const sec = document.createElement('section');
-    sec.className = 'cat-section'; sec.id = cat.id;
-    sec.innerHTML = `
-      <div class="container">
-        <div class="cat-header">
-          <div class="cat-title-wrap">
-            <div class="cat-icon-wrap" style="background:${cat.color}">${cat.icon}</div>
-            <div><div class="cat-label">${cat.name}</div><div class="cat-count">${prods.length} product${prods.length !== 1 ? 's' : ''}</div></div>
-          </div>
-          <a href="#${cat.id}" class="btn-view-all">View All <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg></a>
-        </div>
-        <div class="products-grid" id="grid-${cat.id}"></div>
-      </div>`;
-    container.appendChild(sec);
-    prods.forEach(p => document.getElementById('grid-' + cat.id).appendChild(createProductCard(p)));
-  });
-}
-
-// ── STATIC DATA FALLBACK ──────────────────────────────────────────────────────
-function loadStaticData() {
-  document.getElementById('category-sections').innerHTML = `
-    <div class="container" style="text-align:center;padding:100px 20px">
-      <div style="font-size:4rem;margin-bottom:24px">🔌</div>
-      <h2 style="font-weight:700;margin-bottom:12px;font-size:2rem">Connecting to Database...</h2>
-      <p style="color:var(--text2);margin-bottom:32px;max-width:500px;margin-left:auto;margin-right:auto;line-height:1.6">
-        We're having trouble reaching our database. This usually happens if the server is starting up or if there's a configuration issue.
-      </p>
-      <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:16px;padding:24px;display:inline-block;text-align:left;max-width:100%">
-        <p style="color:var(--text3);margin-bottom:12px;font-weight:600">Troubleshooting for Admin:</p>
-        <ul style="color:var(--text2);font-size:.9rem;list-style:none;padding:0;display:flex;flex-direction:column;gap:10px">
-          <li>✅ Ensure <strong>MONGO_URI</strong> is set in Vercel.</li>
-          <li>✅ Check <strong>Deployment Logs</strong> in Vercel dashboard.</li>
-          <li>✅ Ensure your IP is whitelisted in <strong>MongoDB Atlas</strong> (allow access from anywhere).</li>
-        </ul>
-      </div>
-      <div style="margin-top:40px">
-        <button onclick="location.reload()" class="btn-primary">Try Refreshing Page</button>
-      </div>
-    </div>`;
-}
-
-// ── SEARCH ────────────────────────────────────────────────────────────────────
-const searchBar = document.getElementById('search-bar');
-const searchInput = document.getElementById('search-input');
-const searchResults = document.getElementById('search-results');
-
-document.getElementById('search-toggle').addEventListener('click', () => {
-  const open = searchBar.classList.toggle('open');
-  searchBar.setAttribute('aria-hidden', open ? 'false' : 'true');
-  if (open) setTimeout(() => searchInput.focus(), 150);
-});
-document.addEventListener('keydown', e => { if (e.key === 'Escape') { searchBar.classList.remove('open'); closeModal(); } });
-
-searchInput.addEventListener('input', e => {
-  const q = e.target.value.trim().toLowerCase();
-  searchResults.innerHTML = '';
-  if (!q) return;
-  const matches = allProducts.filter(p => p.name.toLowerCase().includes(q) || (p.category_name || '').toLowerCase().includes(q)).slice(0, 6);
-  if (!matches.length) { searchResults.innerHTML = `<div style="color:var(--text3);font-size:.9rem;padding:8px 16px">No results found</div>`; return; }
-  matches.forEach(p => {
-    const item = document.createElement('div');
-    item.className = 'search-result-item';
-    item.innerHTML = `<div><div class="res-name">${p.category_icon || '📦'} ${p.name}</div><div class="res-cat">${p.category_name || ''}</div></div><div class="res-price">${fmt(p.price)}</div>`;
-    item.addEventListener('click', () => { searchBar.classList.remove('open'); searchInput.value = ''; searchResults.innerHTML = ''; openProductModal(p); });
-    searchResults.appendChild(item);
-  });
-});
-
-// ── HAMBURGER ─────────────────────────────────────────────────────────────────
-const navLinks = document.getElementById('nav-links');
-document.getElementById('hamburger').addEventListener('click', () => navLinks.classList.toggle('open'));
-document.querySelectorAll('.nav-link').forEach(link => {
-  link.addEventListener('click', () => navLinks.classList.remove('open'));
-});
-
-// ── COUNTDOWN ─────────────────────────────────────────────────────────────────
-function startCountdown() {
-  let total = 8 * 3600 + 45 * 60;
-  const update = () => {
-    const h = Math.floor(total / 3600), m = Math.floor((total % 3600) / 60), s = total % 60;
-    document.getElementById('cd-h').textContent = String(h).padStart(2, '0');
-    document.getElementById('cd-m').textContent = String(m).padStart(2, '0');
-    document.getElementById('cd-s').textContent = String(s).padStart(2, '0');
-    if (total > 0) total--; else total = 8 * 3600 + 45 * 60;
-  };
-  update(); setInterval(update, 1000);
-}
-startCountdown();
-
-// ── MODAL ─────────────────────────────────────────────────────────────────────
-function closeModal() {
-  const overlay = document.getElementById('modal-overlay');
-  overlay.classList.remove('open'); overlay.setAttribute('aria-hidden', 'true');
-  document.body.style.overflow = '';
-}
-document.getElementById('modal-overlay').addEventListener('click', e => { if (e.target === document.getElementById('modal-overlay')) closeModal(); });
-document.getElementById('modal-close').addEventListener('click', closeModal);
-
-// ── TOAST ─────────────────────────────────────────────────────────────────────
-function showToast(msg, type = 'success') {
-  const t = document.getElementById('toast');
-  t.textContent = msg; t.className = `toast ${type} show`;
-  setTimeout(() => t.classList.remove('show'), 3500);
-}
-
-// ── SCROLL ANIMATIONS ─────────────────────────────────────────────────────────
-function initScrollAnimations() {
-  const observer = new IntersectionObserver(entries => {
-    entries.forEach(e => { if (e.isIntersecting) { e.target.style.opacity = '1'; e.target.style.transform = 'translateY(0)'; } });
-  }, { threshold: 0.06, rootMargin: '0px 0px -40px 0px' });
-  document.querySelectorAll('.product-card,.feature-card,.review-card').forEach(el => {
-    el.style.opacity = '0'; el.style.transform = 'translateY(28px)'; el.style.transition = 'opacity 0.55s ease, transform 0.55s ease';
-    observer.observe(el);
-  });
-}
-
-// ── NAVBAR SCROLL ─────────────────────────────────────────────────────────────
-window.addEventListener('scroll', () => {
-  document.getElementById('navbar').style.background = window.scrollY > 40 ? 'rgba(10,13,20,0.97)' : 'rgba(10,13,20,0.8)';
-}, { passive: true });
-
-// ── INIT ──────────────────────────────────────────────────────────────────────
-initAuth().then(() => loadData());
-
-// ── INFO POPUPS ─────────────────────────────────────────────────────────────
-const INFO_CONTENT = {
-  about: {
-    title: 'About Digi Nepal',
-    body: `<p>Digi Nepal is Nepal's leading digital marketplace for premium subscriptions and software activation keys. Founded in 2021, we have served over 25,000 customers across the country.</p>
-           <p>Our mission is to provide access to premium digital tools at prices that are affordable for everyone in Nepal. We guarantee 100% genuine products and 24/7 customer support.</p>`
-  },
-  delivery: {
-    title: 'About Delivery',
-    body: `<p>We offer <strong>Instant Digital Delivery</strong>. As soon as your payment is verified, your activation key or account credentials will be sent directly to your registered email address.</p>
-           <p>Delivery time typically ranges from 2 minutes to 1 hour, depending on the product and payment verification status.</p>`
-  },
-  reviews: {
-    title: 'Customer Reviews',
-    body: `<p>We take pride in our 4.9/5 star rating. Check out what our customers say in the "Reviews" section on the homepage, or visit our Facebook page to see hundreds of verified testimonials from users across Nepal.</p>`
-  },
-  privacy: {
-    title: 'Privacy Policy',
-    body: `<p>At Digi Nepal, your privacy is our priority. We only collect the necessary information (Name, Email, Phone) to process your orders and provide support.</p>
-           <p>We never share your personal data with third parties. All payment information is handled through secure, encrypted Nepali payment gateways.</p>`
-  },
-  refund: {
-    title: 'Refund Policy',
-    body: `<p>We offer a 100% money-back guarantee if the key or subscription provided does not work as described. Refund requests must be made within 48 hours of purchase.</p>
-           <p>Please note that refunds are not available for "change of mind" after the digital product has been delivered and viewed.</p>`
-  },
-  terms: {
-    title: 'Terms of Use',
-    body: `<p>By using Digi Nepal, you agree to our terms of service. Our products are intended for personal or professional use as specified. Sharing account credentials provided by us may result in account termination without refund.</p>`
-  },
-  payment: {
-    title: 'Payment Issues',
-    body: `<p>If your payment was successful but you haven't received your order, please wait 15 minutes and check your Spam folder. If it's still missing, contact us via WhatsApp with your screenshot of payment.</p>`
-  },
-  contact: {
-    title: 'Contact Us',
-    body: `<p><strong>WhatsApp Support:</strong> +977 9705985657</p>
-           <p><strong>Email:</strong> support@diginepal.com</p>
-           <p><strong>Hours:</strong> 24/7 Support Available</p>`
-  },
-  partnership: {
-    title: 'Partnership & Reselling',
-    body: `<p>Interested in reselling our products or becoming a partner? We offer special bulk pricing for resellers and local computer shops. Contact us on WhatsApp for our partnership program details.</p>`
-  }
-};
-
-document.addEventListener('click', e => {
-  const link = e.target.closest('.info-link');
-  if (link) {
-    const type = link.dataset.type;
-    const content = INFO_CONTENT[type];
-    if (content) {
-      const modalBody = document.getElementById('modal-content');
-      modalBody.innerHTML = `
-        <h2 style="margin-bottom:20px; font-weight:800; color:var(--blue-light)">${content.title}</h2>
-        <div style="line-height:1.7; color:var(--text2); font-size:1rem">${content.body}</div>
-        <button class="btn-primary" onclick="closeModal()" style="margin-top:30px; width:100%">Close</button>
-      `;
-      const overlay = document.getElementById('modal-overlay');
-      overlay.classList.add('open');
-      overlay.setAttribute('aria-hidden', 'false');
-      document.body.style.overflow = 'hidden';
-    }
-  }
-});
-
+// The restored checkout keeps the original function name used by existing order actions.
+// eslint-disable-next-line no-func-assign
+openPayment = openPaymentRestored;
+setupLegacyPaymentActions();
+init();

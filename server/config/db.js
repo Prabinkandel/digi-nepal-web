@@ -1,12 +1,100 @@
 const mongoose = require('mongoose');
+const bcrypt = require('bcryptjs');
+const { randomUUID } = require('node:crypto');
+const fs = require('node:fs');
+const path = require('node:path');
+const { MongoMemoryServer } = require('mongodb-memory-server');
+const User = require('../models/User');
+const Category = require('../models/Category');
+const Product = require('../models/Product');
 
-const connectDB = async () => {
-  try {
-    const conn = await mongoose.connect(process.env.MONGO_URI);
-    console.log(`✅ MongoDB Connected: ${conn.connection.host}`);
-  } catch (error) {
-    console.error(`❌ Error connecting to MongoDB: ${error.message}`);
+let connecting;
+let memoryServer;
+
+async function seedAdminIfNeeded() {
+  const existing = await User.findOne({ email: 'admin@diginepal.com' }).lean();
+  if (!existing) {
+    await User.create({
+      id: randomUUID(),
+      name: 'Admin',
+      email: 'admin@diginepal.com',
+      password: await bcrypt.hash('admin123', 12),
+      role: 'admin',
+      is_active: 1,
+      auth_version: 0,
+      mfa_enabled: false
+    });
   }
+}
+
+async function seedCatalogIfEmpty() {
+  if (await Product.exists({})) return;
+  const categories = [
+    { id: randomUUID(), name: 'AI Tools', icon: '✦', color: '#B91C1C', sort_order: 1, is_active: 1 },
+    { id: randomUUID(), name: 'Design & Media', icon: '◈', color: '#DC2626', sort_order: 2, is_active: 1 },
+    { id: randomUUID(), name: 'Cloud & Office', icon: '◇', color: '#991B1B', sort_order: 3, is_active: 1 },
+    { id: randomUUID(), name: 'Entertainment', icon: '●', color: '#7F1D1D', sort_order: 4, is_active: 1 },
+    { id: randomUUID(), name: 'Security & VPN', icon: '◆', color: '#EF4444', sort_order: 5, is_active: 1 }
+  ];
+  const existing = await Category.find({}).lean();
+  const byName = new Map(existing.map(category => [category.name, category]));
+  const catalog = [];
+  for (const category of categories) {
+    const current = byName.get(category.name);
+    if (current) catalog.push(current);
+    else { const [created] = await Category.create([category]); catalog.push(created); }
+  }
+  const idFor = name => catalog.find(category => category.name === name).id;
+  await Product.insertMany([
+    { id: randomUUID(), name: 'ChatGPT Plus — 1 Month', category_id: idFor('AI Tools'), price: 1200, original_price: 2500, badge: 'Popular', description: 'Advanced AI tools for writing, research, and everyday work.', features: ['Priority access', 'Advanced models', 'Image generation'], sort_order: 1, is_active: 1 },
+    { id: randomUUID(), name: 'Canva Pro — 1 Year', category_id: idFor('Design & Media'), price: 1500, original_price: 3000, badge: 'Save 50%', description: 'Design tools and premium templates for your next project.', features: ['Premium templates', 'Brand tools', 'Background remover'], sort_order: 2, is_active: 1 },
+    { id: randomUUID(), name: 'Microsoft 365 Personal — 1 Year', category_id: idFor('Cloud & Office'), price: 2200, original_price: 3500, badge: '', description: 'Everyday productivity apps and cloud storage.', features: ['Office apps', 'Cloud storage', 'Multi-device access'], sort_order: 3, is_active: 1 },
+    { id: randomUUID(), name: 'Netflix Premium — 1 Month', category_id: idFor('Entertainment'), price: 550, original_price: 800, badge: '', description: 'Premium entertainment access with clear order tracking.', features: ['High quality streaming', 'Simple setup', 'Order updates'], sort_order: 4, is_active: 1 },
+    { id: randomUUID(), name: 'ExpressVPN — 1 Year', category_id: idFor('Security & VPN'), price: 1800, original_price: 4000, badge: 'Best value', description: 'Private, reliable access for your connected devices.', features: ['Global locations', 'Device protection', 'Support included'], sort_order: 5, is_active: 1 }
+  ]);
+}
+
+async function connectDB() {
+  if (connecting) return connecting;
+
+  if (process.env.MONGO_URI) {
+    connecting = mongoose.connect(process.env.MONGO_URI, { serverSelectionTimeoutMS: 8000 })
+      .catch(error => {
+        connecting = null;
+        throw error;
+      });
+    return connecting;
+  }
+
+  const databasePath = process.env.NODE_ENV === 'test'
+    ? path.join(__dirname, '../../.local-data/test-mongodb-' + process.pid)
+    : path.join(__dirname, '../../.local-data/mongodb');
+  fs.mkdirSync(databasePath, { recursive: true });
+  connecting = MongoMemoryServer.create({
+    instance: { dbPath: databasePath, dbName: 'digi-nepal' }
+  })
+    .then(server => {
+      memoryServer = server;
+      return mongoose.connect(server.getUri(), { serverSelectionTimeoutMS: 8000 });
+    })
+    .then(async () => {
+      await seedAdminIfNeeded();
+      await seedCatalogIfEmpty();
+    })
+    .catch(error => {
+      connecting = null;
+      memoryServer = null;
+      throw error;
+    });
+
+  return connecting;
+}
+
+connectDB.close = async function close() {
+  await mongoose.disconnect();
+  if (memoryServer) await memoryServer.stop();
+  memoryServer = null;
+  connecting = null;
 };
 
 module.exports = connectDB;

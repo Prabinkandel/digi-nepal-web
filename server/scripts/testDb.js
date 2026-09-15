@@ -1,13 +1,7 @@
+const path = require('node:path');
+require('dotenv').config({ path: path.join(__dirname, '../../.env'), quiet: true });
 const mongoose = require('mongoose');
-
-const uri = "mongodb://prabink721:%40Prabin123@ac-aqdosee-shard-00-00.czmnpub.mongodb.net:27017,ac-aqdosee-shard-00-01.czmnpub.mongodb.net:27017,ac-aqdosee-shard-00-02.czmnpub.mongodb.net:27017/toolsvault?ssl=true&replicaSet=atlas-13495d-shard-0&authSource=admin&retryWrites=true&w=majority";
-
-mongoose.connect(uri)
-  .then(() => {
-    console.log("Connected directly!");
-    process.exit(0);
-  })
-  .catch(err => {
-    console.error("Failed:", err.message);
-    process.exit(1);
-  });
+if (!process.env.MONGO_URI) throw new Error('Set MONGO_URI in .env before running this database connection check.');
+mongoose.connect(process.env.MONGO_URI)
+  .then(() => { console.log('Database connection succeeded.'); return mongoose.disconnect(); })
+  .catch(error => { console.error('Database connection failed:', error.message); process.exitCode = 1; });

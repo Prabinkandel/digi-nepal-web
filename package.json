@@ -1,23 +1,43 @@
 {
   "name": "digi-nepal-web",
   "version": "1.0.0",
-  "description": "ToolsVault Full Stack App",
+  "description": "Digi Nepal digital marketplace",
   "main": "server/server.js",
   "scripts": {
     "start": "node server/server.js",
-    "dev": "node server/server.js"
+    "dev": "node server/server.js",
+    "dev:local": "node server/scripts/local.js",
+    "admin:create": "node server/scripts/createAdmin.js",
+    "test": "node --test --test-concurrency=1 tests/*.test.js",
+    "lint": "eslint .",
+    "build": "node server/scripts/build.js"
   },
   "dependencies": {
-    "bcryptjs": "^2.4.3",
-    "cors": "^2.8.5",
-    "dotenv": "^16.4.5",
-    "express": "^4.18.3",
-    "jsonwebtoken": "^9.0.2",
-    "mongoose": "^9.6.2",
-    "multer": "^1.4.5-lts.1",
-    "nodemailer": "^8.0.7",
-    "uuid": "^9.0.1",
-    "@anthropic-ai/sdk": "^0.20.9",
-    "cloudinary": "^2.2.0"
+    "@hapi/iron": "latest",
+    "bcryptjs": "latest",
+    "connect-mongo": "latest",
+    "cors": "^2.8.6",
+    "csrf-sync": "latest",
+    "dotenv": "latest",
+    "express": "latest",
+    "express-session": "latest",
+    "helmet": "latest",
+    "mongoose": "latest",
+    "multer": "latest",
+    "nodemailer": "latest",
+    "otpauth": "latest",
+    "rate-limiter-flexible": "latest",
+    "read": "latest",
+    "sharp": "latest",
+    "zod": "latest"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "latest",
+    "@eslint/js": "latest",
+    "@playwright/test": "latest",
+    "eslint": "latest",
+    "globals": "latest",
+    "mongodb-memory-server": "latest",
+    "supertest": "latest"
   }
 }

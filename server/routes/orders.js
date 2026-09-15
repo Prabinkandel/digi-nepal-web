@@ -1,123 +1,39 @@
-const router = require('express').Router();
-const { v4: uuidv4 } = require('uuid');
-const auth = require('../middleware/auth');
-const adminAuth = require('../middleware/adminAuth');
-const { sendMail } = require('../utils/mailer');
-const Order = require('../models/Order');
-const Product = require('../models/Product');
-const User = require('../models/User');
-
-const WA_NUMBER = '9779705985657';
-
-// User: place order
-router.post('/', auth, async (req, res) => {
-  try {
-    const { product_id } = req.body;
-    if (!product_id) return res.status(400).json({ error: 'product_id required' });
-    
-    const product = await Product.findOne({ id: product_id, is_active: 1 });
-    if (!product) return res.status(404).json({ error: 'Product not found' });
-    
-    const user = await User.findOne({ id: req.user.id });
-    if (!user) return res.status(404).json({ error: 'User not found' });
-
-    const orderId = uuidv4();
-    const shortId = orderId.split('-')[0].toUpperCase();
-    const productImg = product.image_url ? (product.image_url.startsWith('/') ? 'http://localhost:3001' + product.image_url : product.image_url) : 'No image available';
-    const waMsg = `Hello ToolsVault! 👋\n\nI'd like to order:\n\n🛍️ *Product:* ${product.name}\n💰 *Price:* Rs ${product.price.toLocaleString()}\n🖼️ *Image:* ${productImg}\n🔖 *Order ID:* ${shortId}\n\n👤 *Name:* ${user.name}\n📧 *Email:* ${user.email}\n\nPlease confirm my order. Thank you!`;
-    const waUrl = `https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(waMsg)}`;
-    
-    await Order.create({
-      id: orderId,
-      user_id: req.user.id,
-      product_id: product_id,
-      product_name: product.name,
-      price: product.price,
-      status: 'pending',
-      wa_message: waMsg
-    });
-    
-    sendMail({
-      from: '"Digi Nepal Orders" <no-reply@diginepal.com>',
-      to: user.email,
-      subject: `Order Received: ${product.name}`,
-      html: `<h2>Order Received!</h2>
-             <p>Hi ${user.name}, we have received your order for <strong>${product.name}</strong>.</p>
-             <p>Order ID: <b>${shortId}</b></p>
-             <p>Price: Rs ${product.price.toLocaleString()}</p>
-             <p>Please complete your order via WhatsApp. Thank you!</p>`
-    }).catch(err => console.error('Failed to send order email:', err));
-
-    res.json({ order_id: orderId, short_id: shortId, wa_url: waUrl });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+const router=require('express').Router();
+const {randomUUID}=require('node:crypto');
+const auth=require('../middleware/auth'),admin=require('../middleware/adminAuth'),limit=require('../middleware/limits');
+const {z,id,text,fail,query,page,searchFilter}=require('../utils/validation');
+const Order=require('../models/Order'),Product=require('../models/Product'),User=require('../models/User'),Payment=require('../models/Payment');
+const {decorate}=require('../utils/catalog');
+router.post('/',auth,limit('orders',20,3600,req=>req.user.id),async(req,res)=>{
+ const data=z.object({product_id:id,request_key:z.string().uuid()}).strict().parse(req.body);
+ const existing=await Order.findOne({request_key:data.request_key,user_id:req.user.id}).lean();
+ if(existing)return res.json(existing);
+ const product=await Product.findOne({id:data.product_id,is_active:1}).lean();
+ if(!product)fail(404,'This product is unavailable.');
+ const current=(await decorate([product]))[0];
+ const order=await Order.create({id:randomUUID(),user_id:req.user.id,product_id:product.id,product_name:product.name,price:current.price,status:'pending',request_key:data.request_key});
+ res.status(201).json(order);
 });
-
-// User: my orders
-router.get('/my', auth, async (req, res) => {
-  try {
-    const orders = await Order.find({ user_id: req.user.id }).sort({ created_at: -1 }).lean();
-    // Populate product image
-    for (let o of orders) {
-      const p = await Product.findOne({ id: o.product_id });
-      o.image_url = p ? p.image_url : null;
-    }
-    res.json(orders);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+router.get('/my',auth,async(req,res)=>res.json(await page(Order,{user_id:req.user.id},query(req))));
+router.get('/all',admin,async(req,res)=>{
+ const q=query(req);const filter={...searchFilter(q.search,['product_name','id'])};
+ if(q.status)filter.status=z.enum(['pending','verified','rejected','delivered']).parse(q.status);
+ const result=await page(Order,filter,q);
+ const users=await User.find({id:{$in:result.items.map(o=>o.user_id)}}).select('id name email').lean();
+ result.items=result.items.map(o=>({...o,user_name:users.find(u=>u.id===o.user_id)?.name||'Unknown',user_email:users.find(u=>u.id===o.user_id)?.email||''}));
+ res.json(result);
 });
-
-// Admin: all orders
-router.get('/all', adminAuth, async (req, res) => {
-  try {
-    const { status } = req.query;
-    const filter = status ? { status } : {};
-    const orders = await Order.find(filter).sort({ created_at: -1 }).lean();
-    
-    for (let o of orders) {
-      const u = await User.findOne({ id: o.user_id });
-      o.user_name = u ? u.name : 'Unknown';
-      o.user_email = u ? u.email : 'Unknown';
-    }
-    res.json(orders);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+router.put('/:id/status',admin,async(req,res)=>{
+ const data=z.object({status:z.enum(['rejected','delivered']),note:text(1000).default('')}).strict().parse(req.body);
+ const orderId=id.parse(req.params.id);
+ const order=await require('mongoose').connection.transaction(async session=>{
+  const current=await Order.findOne({id:orderId}).session(session);
+  if(!current)fail(404,'Order not found.');
+  const valid=data.status==='delivered'?current.status==='verified':current.status==='pending';
+  if(!valid)fail(409,'This order status changed. Refresh and try again.');
+  if(data.status==='rejected'&&await Payment.exists({order_id:current.id,status:'pending'}).session(session))fail(409,'Review the submitted payment before rejecting this order.');
+  current.status=data.status;current.note=data.note;await current.save({session});return current;
+ });
+ res.json(order);
 });
-
-// Admin: update order status
-router.put('/:id/status', adminAuth, async (req, res) => {
-  try {
-    const { status, note } = req.body;
-    if (!['pending','verified','rejected','delivered'].includes(status)) return res.status(400).json({ error: 'Invalid status' });
-    
-    const updatedOrder = await Order.findOneAndUpdate(
-      { id: req.params.id },
-      { status, note: note || null },
-      { new: true }
-    ).lean();
-    
-    if (updatedOrder) {
-      const user = await User.findOne({ id: updatedOrder.user_id });
-      if (user && user.email && ['verified', 'delivered'].includes(status)) {
-        sendMail({
-          from: '"Digi Nepal Orders" <no-reply@diginepal.com>',
-          to: user.email,
-          subject: `Order ${status.toUpperCase()}: ${updatedOrder.product_name}`,
-          html: `<h2>Order ${status.charAt(0).toUpperCase() + status.slice(1)}</h2>
-                 <p>Hi ${user.name}, your order for <strong>${updatedOrder.product_name}</strong> has been marked as <b>${status}</b>.</p>
-                 <p>Order ID: ${updatedOrder.id.split('-')[0].toUpperCase()}</p>
-                 ${note ? `<p>Note from admin: ${note}</p>` : ''}
-                 <p>Thank you for shopping with Digi Nepal!</p>`
-        }).catch(err => console.error('Failed to send status update email:', err));
-      }
-    }
-    res.json(updatedOrder);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-module.exports = router;
+module.exports=router;

@@ -1,65 +1,30 @@
-const router = require('express').Router();
-const adminAuth = require('../middleware/adminAuth');
-const User = require('../models/User');
-const Order = require('../models/Order');
-const Product = require('../models/Product');
-
-// All users
-router.get('/', adminAuth, async (req, res) => {
-  try {
-    const users = await User.find().select('id name email role is_active created_at').sort({ created_at: -1 }).lean();
-    res.json(users);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+const router=require('express').Router();
+const admin=require('../middleware/adminAuth');
+const User=require('../models/User'),Order=require('../models/Order'),Product=require('../models/Product'),Payment=require('../models/Payment'),Audit=require('../models/Audit');
+const {z,id,flag,fail,query,page,searchFilter}=require('../utils/validation');
+router.use(admin);
+router.get('/stats',async(req,res)=>{
+ const [totalUsers,totalOrders,pendingOrders,totalProducts,verified,pendingPayments,recentOrders]=await Promise.all([User.countDocuments(),Order.countDocuments(),Order.countDocuments({status:'pending'}),Product.countDocuments({is_active:1}),Payment.aggregate([{$match:{status:'verified'}},{$group:{_id:null,total:{$sum:'$amount'}}}]),Payment.countDocuments({status:'pending'}),Order.find().sort({created_at:-1}).limit(5).select('-_id -__v').lean()]);
+ const settings=await require('../utils/settings').getSettings();
+ res.json({totalUsers,totalOrders,pendingOrders,totalProducts,revenue:verified[0]?.total||0,pendingPayments,recentOrders,setup:{email:require('../utils/mailer').configured(),payment_qr:!!settings.payment_qr_url,policies:!!(settings.terms&&settings.privacy&&settings.refunds),mfa:req.user.mfa_enabled}});
 });
-
-// Toggle active
-router.put('/:id/toggle', adminAuth, async (req, res) => {
-  try {
-    const u = await User.findOne({ id: req.params.id });
-    if (!u) return res.status(404).json({ error: 'Not found' });
-    if (u.role === 'admin') return res.status(403).json({ error: 'Cannot disable admin' });
-    
-    u.is_active = u.is_active ? 0 : 1;
-    await u.save();
-    res.json({ is_active: u.is_active });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+router.get('/audit',async(req,res)=>{
+ const q=query(req);res.json(await page(Audit,{...searchFilter(q.search,['actor_id','action','target'])},q));
 });
-
-// Promote to admin
-router.put('/:id/promote', adminAuth, async (req, res) => {
-  try {
-    await User.findOneAndUpdate({ id: req.params.id }, { role: 'admin' });
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+router.get('/',async(req,res)=>{
+ const q=query(req),filter={...searchFilter(q.search,['name','email'])};
+ if(q.status)filter.is_active=q.status==='active'?1:0;
+ res.json(await page(User,filter,q,'id name email role is_active mfa_enabled created_at'));
 });
-
-// Stats for dashboard
-router.get('/stats', adminAuth, async (req, res) => {
-  try {
-    const totalUsers = await User.countDocuments({ role: 'user' });
-    const totalOrders = await Order.countDocuments();
-    const pendingOrders = await Order.countDocuments({ status: 'pending' });
-    const totalProducts = await Product.countDocuments({ is_active: 1 });
-    
-    const verifiedOrders = await Order.find({ status: 'verified' });
-    const revenue = verifiedOrders.reduce((sum, order) => sum + order.price, 0);
-    
-    const recentOrders = await Order.find().sort({ created_at: -1 }).limit(5).lean();
-    for (let o of recentOrders) {
-      const u = await User.findOne({ id: o.user_id });
-      o.user_name = u ? u.name : 'Unknown';
-    }
-    
-    res.json({ totalUsers, totalOrders, pendingOrders, totalProducts, revenue, recentOrders });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+router.put('/:id',async(req,res)=>{
+ const data=z.object({role:z.enum(['user','editor','admin']).optional(),is_active:flag.optional()}).strict().parse(req.body);
+ const userId=id.parse(req.params.id);
+ const user=await User.findOne({id:userId});
+ if(!user)fail(404,'Account not found.');
+ if(user.id===req.user.id)fail(403,'You cannot change your own role or disable your own account.');
+ // Other administrator accounts are intentionally protected from demotion/disable.
+ if(user.role==='admin'&&(data.role&&data.role!=='admin'||data.is_active===0))fail(403,'Administrator recovery requires the server operator.');
+ const result=await User.findOneAndUpdate({id:userId},{$set:data,$inc:{auth_version:1}},{new:true}).select('id name email role is_active mfa_enabled');
+ res.json(result);
 });
-
-module.exports = router;
+module.exports=router;

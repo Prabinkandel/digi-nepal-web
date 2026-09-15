@@ -1,67 +1,30 @@
-const router = require('express').Router();
-const multer = require('multer');
-const cloudinary = require('cloudinary').v2;
-const adminAuth = require('../middleware/adminAuth');
-
-// Configure Cloudinary
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET
+const router=require('express').Router();
+const multer=require('multer'),sharp=require('sharp');
+const {randomUUID}=require('node:crypto');
+const auth=require('../middleware/auth'),access=require('../middleware/access'),limit=require('../middleware/limits');
+const Media=require('../models/Media');
+const {fail}=require('../utils/validation');
+const upload=multer({storage:multer.memoryStorage(),limits:{fileSize:5*1024*1024,files:1,fields:2,parts:3}});
+router.post('/',auth,limit('uploads',30,3600,req=>req.user.id),upload.single('image'),async(req,res)=>{
+ if(!req.file)fail(400,'Choose a PNG, JPEG, or WebP image up to 5 MB.');
+ const purpose=req.body.purpose||'receipt';
+ if(!['catalog','receipt'].includes(purpose))fail(400,'Invalid upload purpose.');
+ if(purpose==='catalog'){
+  const guards=access('admin','editor');
+  await new Promise((resolve,reject)=>guards[1](req,res,e=>e?reject(e):resolve()));
+  if(res.headersSent)return;
+ }
+ const file=req.file;
+ if(!['image/jpeg','image/png','image/webp'].includes(file.mimetype))fail(400,'Use a PNG, JPEG, or WebP image.');
+ let output;
+ try{
+  const pipeline=sharp(file.buffer,{limitInputPixels:20000000,failOn:'error'});
+  const meta=await pipeline.metadata();
+  if(!['png','jpeg','webp'].includes(meta.format)||(meta.pages||1)>1)fail(400,'Use a single-frame PNG, JPEG, or WebP image.');
+  output=await pipeline.rotate().resize({width:1800,height:1800,fit:'inside',withoutEnlargement:true}).webp({quality:85}).toBuffer();
+ }catch{fail(400,'The image could not be read. Choose a valid PNG, JPEG, or WebP file.');}
+ if(output.length>2*1024*1024)fail(400,'Image is too detailed. Choose a smaller image.');
+ const media=await Media.create({id:randomUUID(),owner_id:req.user.id,purpose,name:String(file.originalname).replace(/[^a-zA-Z0-9 ._-]/g,'').slice(0,100)||'Image',data:output,mime:'image/webp',size:output.length});
+ res.status(201).json({id:media.id,url:'/api/media/'+media.id,name:media.name});
 });
-
-// Use memory storage for Vercel & Base64 compatibility
-const storage = multer.memoryStorage();
-const upload = multer({ 
-  storage,
-  limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
-});
-
-router.post('/', adminAuth, upload.single('image'), async (req, res) => {
-  try {
-    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
-
-    // 1. Try Cloudinary if configured
-    if (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY) {
-      try {
-        const b64 = Buffer.from(req.file.buffer).toString('base64');
-        let dataURI = 'data:' + req.file.mimetype + ';base64,' + b64;
-        
-        const result = await cloudinary.uploader.upload(dataURI, {
-          resource_type: 'auto',
-          folder: 'digi-nepal'
-        });
-        
-        return res.json({ 
-          url: result.secure_url, 
-          filename: result.public_id,
-          provider: 'cloudinary'
-        });
-      } catch (cloudErr) {
-        console.error('Cloudinary upload failed, falling back to Base64:', cloudErr);
-      }
-    }
-
-    // 2. Fallback: Base64 Data URI (Works everywhere, including Vercel, without extra setup)
-    // This stores the image directly in the MongoDB string.
-    const b64 = Buffer.from(req.file.buffer).toString('base64');
-    const dataUrl = `data:${req.file.mimetype};base64,${b64}`;
-    
-    // Check if the image is too large for MongoDB (16MB BSON limit, but we recommend smaller)
-    if (dataUrl.length > 2 * 1024 * 1024) { // 2MB limit for Base64 to keep DB fast
-      return res.status(400).json({ error: 'Image too large for local storage. Please use a smaller image or configure Cloudinary.' });
-    }
-
-    return res.json({ 
-      url: dataUrl, 
-      filename: `local-${Date.now()}`,
-      provider: 'base64'
-    });
-
-  } catch (err) {
-    console.error('Upload Error:', err);
-    res.status(500).json({ error: 'Upload failed: ' + err.message });
-  }
-});
-
-module.exports = router;
+module.exports=router;

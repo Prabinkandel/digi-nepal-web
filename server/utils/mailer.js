@@ -1,45 +1,10 @@
 const nodemailer = require('nodemailer');
-
-let transporter;
-
-async function initMailer() {
-  if (transporter) return transporter;
-
-  if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
-    transporter = nodemailer.createTransport({
-      host: 'smtp.gmail.com',
-      port: 465,
-      secure: true,
-      auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
-    });
-    console.log('✉️ Mailer configured with Real Email credentials.');
-  } else {
-    return new Promise((resolve, reject) => {
-      nodemailer.createTestAccount((err, account) => {
-        if (err) {
-          console.error('Failed to create a testing account. ' + err.message);
-          return reject(err);
-        }
-        transporter = nodemailer.createTransport({
-          host: account.smtp.host, port: account.smtp.port, secure: account.smtp.secure,
-          auth: { user: account.user, pass: account.pass }
-        });
-        console.log(`\n✉️ Mailer configured with Ethereal Email (Test Mode). Check console logs for email links.\n`);
-        resolve(transporter);
-      });
-    });
-  }
-  return transporter;
-}
-
+let transport;
+function usesGmailOAuth() { return Boolean(process.env.GMAIL_OAUTH_EMAIL && process.env.GMAIL_OAUTH_CLIENT_ID && process.env.GMAIL_OAUTH_CLIENT_SECRET && process.env.GMAIL_OAUTH_REFRESH_TOKEN); }
+function configured() { return usesGmailOAuth() || !!((process.env.SMTP_HOST || process.env.EMAIL_USER) && (process.env.SMTP_USER || process.env.EMAIL_USER) && (process.env.SMTP_PASS || process.env.EMAIL_PASS)); }
 async function sendMail(options) {
-  const t = await initMailer();
-  const info = await t.sendMail(options);
-  if (info.messageId && !process.env.EMAIL_USER) {
-    console.log(`\n📧 Email Sent to ${options.to}: ${options.subject}`);
-    console.log(`Preview URL: ${nodemailer.getTestMessageUrl(info)}\n`);
-  }
-  return info;
+  if (!configured()) throw Object.assign(new Error('Email is not configured. Contact the site administrator.'), { status: 503 });
+  if (!transport) transport = usesGmailOAuth() ? nodemailer.createTransport({ service: 'gmail', auth: { type: 'OAuth2', user: process.env.GMAIL_OAUTH_EMAIL, clientId: process.env.GMAIL_OAUTH_CLIENT_ID, clientSecret: process.env.GMAIL_OAUTH_CLIENT_SECRET, refreshToken: process.env.GMAIL_OAUTH_REFRESH_TOKEN } }) : nodemailer.createTransport({ host: process.env.SMTP_HOST || 'smtp.gmail.com', port: Number(process.env.SMTP_PORT || 465), secure: (process.env.SMTP_PORT || '465') === '465', requireTLS: true, auth: { user: process.env.SMTP_USER || process.env.EMAIL_USER, pass: process.env.SMTP_PASS || process.env.EMAIL_PASS } });
+  return transport.sendMail({ ...options, from: process.env.SMTP_FROM || process.env.GMAIL_OAUTH_EMAIL || process.env.EMAIL_USER || process.env.SMTP_USER });
 }
-
-module.exports = { sendMail };
+module.exports = { sendMail, configured };

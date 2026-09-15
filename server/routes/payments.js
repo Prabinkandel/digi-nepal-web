@@ -1,105 +1,43 @@
-const router = require('express').Router();
-const { v4: uuidv4 } = require('uuid');
-const auth = require('../middleware/auth');
-const adminAuth = require('../middleware/adminAuth');
-const { sendMail } = require('../utils/mailer');
-const Payment = require('../models/Payment');
-const User = require('../models/User');
-
-// User: submit a QR payment proof
-router.post('/', auth, async (req, res) => {
-  try {
-    const { order_id, product_name, amount, payer_name, transaction_id, payment_method, phone, note, screenshot_url } = req.body;
-    if (!payer_name || !transaction_id || !payment_method) {
-      return res.status(400).json({ error: 'Payer name, transaction ID and payment method are required.' });
-    }
-    const id = uuidv4();
-    await Payment.create({
-      id, 
-      order_id: order_id || null, 
-      user_id: req.user.id, 
-      product_name: product_name || '', 
-      amount: amount || 0, 
-      payer_name, 
-      transaction_id, 
-      payment_method, 
-      phone: phone || '', 
-      note: note || '', 
-      screenshot_url: screenshot_url || ''
-    });
-    res.json({ payment_id: id, message: 'Payment submitted successfully! Admin will verify soon.' });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+const router=require('express').Router();
+const {randomUUID}=require('node:crypto');
+const auth=require('../middleware/auth'),admin=require('../middleware/adminAuth'),limit=require('../middleware/limits');
+const {z,id,text,fail,query,page,searchFilter}=require('../utils/validation');
+const Payment=require('../models/Payment'),Order=require('../models/Order'),Media=require('../models/Media'),User=require('../models/User');
+const database=require('mongoose').connection;
+const unsupportedTransaction=error=>/Transaction numbers are only allowed|replica set|transactions are not supported/i.test(String(error?.message||''));
+async function submitPayment(data,media,userId){
+ const fallback=async()=>{const paymentId=randomUUID();const order=await Order.findOneAndUpdate({id:data.order_id,user_id:userId,status:'pending',payment_id:null},{$set:{payment_id:paymentId}},{returnDocument:'after'});if(!order)fail(409,'This order already has a payment or is no longer pending.');try{const [record]=await Payment.create([{...data,id:paymentId,user_id:userId,product_name:order.product_name,amount:order.price,screenshot_url:'/api/media/'+media.id,dedupe_key:data.payment_method.toLowerCase()+':'+data.transaction_id.toLowerCase().replace(/\s+/g,'')}]);return record;}catch(error){await Order.updateOne({id:order.id,payment_id:paymentId},{$set:{payment_id:null}});throw error;}};
+ try{return await database.transaction(async session=>{const order=await Order.findOne({id:data.order_id,user_id:userId}).session(session);if(!order)fail(404,'Order not found.');if(order.status!=='pending'||order.payment_id)fail(409,'This order already has a payment or is no longer pending.');const paymentId=randomUUID();const [record]=await Payment.create([{...data,id:paymentId,user_id:userId,product_name:order.product_name,amount:order.price,screenshot_url:'/api/media/'+media.id,dedupe_key:data.payment_method.toLowerCase()+':'+data.transaction_id.toLowerCase().replace(/\s+/g,'')}],{session});order.payment_id=paymentId;await order.save({session});return record;});}catch(error){if(unsupportedTransaction(error))return fallback();throw error;}
+}
+router.post('/',auth,limit('payments',15,3600,req=>req.user.id),async(req,res)=>{
+ const data=z.object({order_id:id,payer_name:text(100).min(2),transaction_id:text(100).min(3).regex(/^[a-zA-Z0-9 _-]+$/),payment_method:text(40).min(2),phone:text(40).default(''),note:text(1000).default(''),media_id:id}).strict().parse(req.body);
+ const settings=await require('../utils/settings').getSettings();
+ if(!settings.payment_methods.split(',').map(s=>s.trim()).includes(data.payment_method))fail(400,'Choose an available payment method.');
+ const media=await Media.findOne({id:data.media_id,owner_id:req.user.id,purpose:'receipt',is_active:1});
+ if(!media)fail(400,'Upload a receipt belonging to your account.');
+ const payment=await submitPayment(data,media,req.user.id);
+ res.status(201).json({payment_id:payment.id,message:'Receipt saved. Payment is awaiting manual verification.'});
 });
-
-// User: my payments
-router.get('/my', auth, async (req, res) => {
-  try {
-    const payments = await Payment.find({ user_id: req.user.id }).sort({ created_at: -1 }).lean();
-    res.json(payments);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+router.get('/my',auth,async(req,res)=>res.json(await page(Payment,{user_id:req.user.id},query(req))));
+router.get('/all',admin,async(req,res)=>{
+ const q=query(req),filter={...searchFilter(q.search,['transaction_id','product_name','payer_name'])};
+ if(q.status)filter.status=z.enum(['pending','verified','rejected']).parse(q.status);
+ const result=await page(Payment,filter,q);
+ const users=await User.find({id:{$in:result.items.map(p=>p.user_id)}}).select('id name email').lean();
+ result.items=result.items.map(p=>({...p,user_email:users.find(u=>u.id===p.user_id)?.email||''}));res.json(result);
 });
-
-// Admin: all payments
-router.get('/all', adminAuth, async (req, res) => {
-  try {
-    const { status } = req.query;
-    const filter = status ? { status } : {};
-    const payments = await Payment.find(filter).sort({ created_at: -1 }).lean();
-    
-    // Populate user info for admin
-    for (let p of payments) {
-      const u = await User.findOne({ id: p.user_id });
-      p.user_name = u ? u.name : 'Unknown';
-      p.user_email = u ? u.email : 'Unknown';
-    }
-    
-    res.json(payments);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+router.put('/:id/status',admin,async(req,res)=>{
+ const data=z.object({status:z.enum(['verified','rejected']),admin_note:text(1000).default('')}).strict().parse(req.body);
+ const result=await require('mongoose').connection.transaction(async session=>{
+  const payment=await Payment.findOne({id:id.parse(req.params.id)}).session(session);
+  if(!payment)fail(404,'Payment not found.');
+  if(payment.status!=='pending')fail(409,'This payment has already been reviewed.');
+  const order=await Order.findOne({id:payment.order_id,user_id:payment.user_id}).session(session);
+  if(!order||order.status!=='pending'||payment.amount!==order.price)fail(409,'The payment does not match a pending order. Resolve the legacy record before proceeding.');
+  payment.status=data.status;payment.admin_note=data.admin_note;await payment.save({session});
+  order.status=data.status==='verified'?'verified':'pending';order.payment_id=data.status==='verified'?payment.id:null;
+  await order.save({session});return payment;
+ });
+ res.json(result);
 });
-
-// Admin: verify / reject payment
-router.put('/:id/status', adminAuth, async (req, res) => {
-  try {
-    const { status, admin_note } = req.body;
-    if (!['pending', 'verified', 'rejected'].includes(status)) {
-      return res.status(400).json({ error: 'Invalid status' });
-    }
-    
-    const payment = await Payment.findOneAndUpdate(
-      { id: req.params.id },
-      { status, admin_note: admin_note || null },
-      { new: true }
-    ).lean();
-
-    // Send email notification
-    if (payment) {
-      const user = await User.findOne({ id: payment.user_id });
-      if (user && ['verified', 'rejected'].includes(status)) {
-        const emoji = status === 'verified' ? '✅' : '❌';
-        sendMail({
-          from: '"Digi Nepal Payments" <no-reply@diginepal.com>',
-          to: user.email,
-          subject: `${emoji} Payment ${status.toUpperCase()}: ${payment.product_name}`,
-          html: `<h2>${emoji} Payment ${status.charAt(0).toUpperCase() + status.slice(1)}</h2>
-                 <p>Hi ${user.name},</p>
-                 <p>Your payment of <strong>Rs ${Number(payment.amount).toLocaleString()}</strong> for <strong>${payment.product_name}</strong> has been <b>${status}</b>.</p>
-                 <p>Transaction ID: <code>${payment.transaction_id}</code></p>
-                 ${admin_note ? `<p>Note from admin: ${admin_note}</p>` : ''}
-                 <p>${status === 'verified' ? 'Your order will be processed shortly. Thank you for shopping with Digi Nepal!' : 'Please contact us on WhatsApp if you believe this is a mistake.'}</p>`
-        }).catch(err => console.error('Payment email error:', err));
-      }
-    }
-
-    res.json(payment);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-module.exports = router;
+module.exports=router;
