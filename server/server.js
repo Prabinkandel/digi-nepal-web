@@ -11,14 +11,26 @@ const databaseReady = connectDB();
 
 const app = express();
 const PORT = process.env.PORT || 3001;
-const connectMongo = require('connect-mongo');
-const MongoStoreClass = connectMongo.default || connectMongo;
-
-const sessionStore = process.env.MONGO_URI
-  ? (MongoStoreClass.create 
-      ? MongoStoreClass.create({ mongoUrl: process.env.MONGO_URI, stringify: false }) 
-      : new (connectMongo(session))({ url: process.env.MONGO_URI, stringify: false }))
-  : new session.MemoryStore();
+let sessionStore = new session.MemoryStore();
+if (process.env.MONGO_URI) {
+  try {
+    const connectMongo = require('connect-mongo');
+    if (connectMongo.default && typeof connectMongo.default.create === 'function') {
+      sessionStore = connectMongo.default.create({ mongoUrl: process.env.MONGO_URI, stringify: false });
+    } else if (connectMongo.create && typeof connectMongo.create === 'function') {
+      sessionStore = connectMongo.create({ mongoUrl: process.env.MONGO_URI, stringify: false });
+    } else if (connectMongo.MongoStore && typeof connectMongo.MongoStore.create === 'function') {
+      sessionStore = connectMongo.MongoStore.create({ mongoUrl: process.env.MONGO_URI, stringify: false });
+    } else if (typeof connectMongo === 'function') {
+      const OldMongoStore = connectMongo(session);
+      sessionStore = new OldMongoStore({ url: process.env.MONGO_URI, stringify: false });
+    } else {
+      console.error('[Session] Could not resolve connect-mongo', connectMongo);
+    }
+  } catch (err) {
+    console.error('[Session] Error initializing MongoStore', err);
+  }
+}
 
 // ── MIDDLEWARE ─────────────────────────────────────────────────────────────────
 if (process.env.NODE_ENV === 'production') app.set('trust proxy', 1);
