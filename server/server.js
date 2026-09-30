@@ -2,8 +2,6 @@ const path = require('path');
 require('dotenv').config({ path: [path.join(__dirname, '../.env'), path.join(__dirname, '.env')], quiet: true });
 const express = require('express');
 const session = require('express-session');
-const connectMongo = require('connect-mongo');
-const MongoStore = connectMongo.default || connectMongo;
 const helmet = require('helmet');
 const { csrfSynchronisedProtection } = require('./middleware/csrf');
 
@@ -13,9 +11,13 @@ const databaseReady = connectDB();
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+const connectMongo = require('connect-mongo');
+const MongoStoreClass = connectMongo.default || connectMongo;
 
 const sessionStore = process.env.MONGO_URI
-  ? MongoStore.create({ mongoUrl: process.env.MONGO_URI, stringify: false })
+  ? (MongoStoreClass.create 
+      ? MongoStoreClass.create({ mongoUrl: process.env.MONGO_URI, stringify: false }) 
+      : new (connectMongo(session))({ url: process.env.MONGO_URI, stringify: false }))
   : new session.MemoryStore();
 
 // ── MIDDLEWARE ─────────────────────────────────────────────────────────────────
