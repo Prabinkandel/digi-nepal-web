@@ -95,6 +95,7 @@ function connectDB() {
     connecting = mongoose.connect(process.env.MONGO_URI, { serverSelectionTimeoutMS: 8000 })
       .then(async conn => {
         await seedAdminIfNeeded();
+        await seedCatalogIfEmpty();
         await healMediaPurposes();
         return conn;
       })
