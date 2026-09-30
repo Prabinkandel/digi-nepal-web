@@ -57,3 +57,5 @@ coverage/
 .parcel-cache/
 .next/
 .nuxt/
+
+.vercel
