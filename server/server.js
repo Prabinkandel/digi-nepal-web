@@ -2,7 +2,8 @@ const path = require('path');
 require('dotenv').config({ path: [path.join(__dirname, '../.env'), path.join(__dirname, '.env')], quiet: true });
 const express = require('express');
 const session = require('express-session');
-const MongoStore = require('connect-mongo');
+const connectMongo = require('connect-mongo');
+const MongoStore = connectMongo.default || connectMongo;
 const helmet = require('helmet');
 const { csrfSynchronisedProtection } = require('./middleware/csrf');
 
