@@ -1,0 +1,43 @@
+{
+  "name": "digi-nepal-web",
+  "version": "1.0.0",
+  "description": "Digi Nepal digital marketplace",
+  "main": "server/server.js",
+  "scripts": {
+    "start": "node server/server.js",
+    "dev": "node server/server.js",
+    "dev:local": "node server/scripts/local.js",
+    "admin:create": "node server/scripts/createAdmin.js",
+    "test": "node --test --test-concurrency=1 tests/*.test.js",
+    "lint": "eslint .",
+    "build": "node server/scripts/build.js"
+  },
+  "dependencies": {
+    "@hapi/iron": "latest",
+    "bcryptjs": "latest",
+    "connect-mongo": "latest",
+    "cors": "^2.8.6",
+    "csrf-sync": "latest",
+    "dotenv": "latest",
+    "express": "latest",
+    "express-session": "latest",
+    "helmet": "latest",
+    "mongoose": "^9.10.1",
+    "multer": "latest",
+    "nodemailer": "latest",
+    "otpauth": "latest",
+    "rate-limiter-flexible": "latest",
+    "read": "latest",
+    "sharp": "latest",
+    "zod": "latest"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "latest",
+    "@eslint/js": "latest",
+    "@playwright/test": "latest",
+    "eslint": "latest",
+    "globals": "latest",
+    "mongodb-memory-server": "latest",
+    "supertest": "latest"
+  }
+}

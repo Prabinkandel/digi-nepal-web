@@ -1,0 +1,62 @@
+/* Motion layer: opacity and transforms only, so animation stays responsive. */
+.header { animation: nav-arrive var(--motion-slow) var(--motion-emphasis) both; }
+.hero .enter { animation-duration: var(--motion-intro); animation-timing-function: var(--motion-emphasis); }
+.hero .delay-1 { animation-delay: 90ms; }
+.hero .delay-2 { animation-delay: 190ms; }
+.hero .delay-3 { animation-delay: 300ms; }
+
+.hero-art { animation: art-arrive 820ms 180ms var(--motion-emphasis) both; }
+.service-card { will-change: transform; }
+.card-a { animation: card-a-intro 700ms 420ms var(--motion-emphasis) both, card-a-float 5.8s 1.12s ease-in-out infinite; }
+.card-b { animation: card-b-intro 760ms 510ms var(--motion-emphasis) both, card-b-float 6.7s 1.27s ease-in-out infinite; }
+.card-c { animation: card-c-intro 720ms 600ms var(--motion-emphasis) both, card-c-float 6.2s 1.32s ease-in-out infinite; }
+.art-orbit { animation: orbit-breathe 8s 900ms ease-in-out infinite; }
+
+html.motion-ready .section-heading, html.motion-ready .reason-copy, html.motion-ready .reason-list, html.motion-ready .faq-layout > div, html.motion-ready .steps li, html.motion-ready .trustbar, html.motion-ready .final-cta .container { opacity: 0; transform: translateY(20px); }
+.motion-visible { animation: reveal-up var(--motion-slow) var(--motion-emphasis) both; }
+.steps li:nth-child(2) { animation-delay: 80ms; }
+.steps li:nth-child(3) { animation-delay: 160ms; }
+.steps li:nth-child(4) { animation-delay: 240ms; }
+.reason-list { animation-delay: 100ms; }
+
+.product-card:not(.skeleton) { animation: product-settle 460ms var(--motion-emphasis) both; }
+.product-card:not(.skeleton):nth-child(2) { animation-delay: 45ms; }
+.product-card:not(.skeleton):nth-child(3) { animation-delay: 90ms; }
+.product-card:not(.skeleton):nth-child(4) { animation-delay: 135ms; }
+.product-card:not(.skeleton):nth-child(n + 5) { animation-delay: 180ms; }
+.category { transition: color var(--motion-fast) var(--motion-ease), background var(--motion-fast) var(--motion-ease), border-color var(--motion-fast) var(--motion-ease), transform var(--motion-fast) var(--motion-ease); }
+.category:active, .button:active, .page-button:active { transform: translateY(1px) scale(.98); }
+.button { transition-duration: var(--motion-base); transition-timing-function: var(--motion-ease); }
+.button span, .text-link span, .card-action span { transition: transform var(--motion-fast) var(--motion-ease); }
+.button:hover span, .text-link:hover span { transform: translateX(3px); }
+.card-action:hover span { transform: translateX(-3px); }
+
+dialog[open] { animation: dialog-enter var(--motion-base) var(--motion-emphasis) both; }
+dialog::backdrop { animation: backdrop-enter var(--motion-base) ease both; }
+.toast { animation: toast-enter var(--motion-base) var(--motion-emphasis) both; }
+details[open] p { animation: answer-enter 220ms var(--motion-ease) both; }
+details[open] summary { color: #fff; }
+.menu-button span { transition: transform var(--motion-fast) var(--motion-ease), opacity var(--motion-fast) var(--motion-ease); }
+.nav-shell.menu-open .menu-button span:first-child { transform: translateY(3.5px) rotate(45deg); }
+.nav-shell.menu-open .menu-button span:last-child { transform: translateY(-3.5px) rotate(-45deg); }
+
+@keyframes nav-arrive { from { opacity: 0; transform: translateY(-14px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes art-arrive { from { opacity: 0; transform: translate3d(20px, 18px, 0) scale(.98); } to { opacity: 1; transform: translate3d(0,0,0) scale(1); } }
+@keyframes card-a-intro { from { opacity: 0; transform: translate3d(-18px,16px,0) rotate(-9deg); } to { opacity: 1; transform: translate3d(0,0,0) rotate(-6deg); } }
+@keyframes card-b-intro { from { opacity: 0; transform: translate3d(22px,18px,0) rotate(9deg); } to { opacity: 1; transform: translate3d(0,0,0) rotate(6deg); } }
+@keyframes card-c-intro { from { opacity: 0; transform: translate3d(-16px,20px,0) rotate(-5deg); } to { opacity: 1; transform: translate3d(0,0,0) rotate(-2deg); } }
+@keyframes card-a-float { 0%,100% { transform: translateY(0) rotate(-6deg); } 50% { transform: translateY(-6px) rotate(-5deg); } }
+@keyframes card-b-float { 0%,100% { transform: translateY(0) rotate(6deg); } 50% { transform: translateY(7px) rotate(5deg); } }
+@keyframes card-c-float { 0%,100% { transform: translateY(0) rotate(-2deg); } 50% { transform: translateY(-5px) rotate(-1deg); } }
+@keyframes orbit-breathe { 0%,100% { opacity:.72; transform:rotate(-18deg) scale(1); } 50% { opacity:1; transform:rotate(-15deg) scale(1.025); } }
+@keyframes reveal-up { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:translateY(0); } }
+@keyframes product-settle { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
+@keyframes dialog-enter { from { opacity:0; transform:translateY(10px) scale(.985); } to { opacity:1; transform:none; } }
+@keyframes backdrop-enter { from { opacity:0; } to { opacity:1; } }
+@keyframes toast-enter { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+@keyframes answer-enter { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:none; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .header, .hero .enter, .hero-art, .service-card, .art-orbit, .motion-visible, .product-card:not(.skeleton), dialog[open], dialog::backdrop, .toast, details[open] p { animation: none !important; opacity: 1; transform: none; }
+  html.motion-ready .section-heading, html.motion-ready .reason-copy, html.motion-ready .reason-list, html.motion-ready .faq-layout > div, html.motion-ready .steps li, html.motion-ready .trustbar, html.motion-ready .final-cta .container { opacity: 1; transform: none; }
+}

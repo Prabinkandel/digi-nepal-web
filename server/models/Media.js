@@ -1,0 +1,2 @@
+const mongoose = require('mongoose');
+module.exports = mongoose.model('Media', new mongoose.Schema({ id: { type: String, unique: true }, owner_id: { type: String, index: true }, purpose: { type: String, enum: ['catalog','receipt'] }, name: String, data: { type: Buffer, select: false }, mime: String, size: Number, is_active: { type: Number, default: 1 } }, { timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' } }));

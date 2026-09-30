@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Get in touch with the Digi Nepal team. We're here to help with orders, subscriptions, and any questions.">
+  <title>Contact Us — Digi Nepal</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="tokens.css">
+  <link rel="stylesheet" href="pages.css">
+</head>
+<body>
+  <header class="page-header"><div class="page-nav-shell">
+    <a href="/" class="brand"><img src="logo.png" alt="Digi Nepal"><span>Digi Nepal</span></a>
+    <nav class="page-nav-links"><a href="/#catalog">Subscriptions</a><a href="/about">About</a><a href="/#support">Support</a></nav>
+    <a href="/" class="back-to-home">← Back to home</a>
+  </div></header>
+
+  <main>
+    <section class="page-hero">
+      <div class="container">
+        <p class="eyebrow">CONTACT US</p>
+        <h1>We'd love to <em>hear from you.</em></h1>
+        <p class="page-intro">Whether you have a question about an order, need help with a subscription, or just want to say hello — our team is ready to help.</p>
+      </div>
+    </section>
+
+    <section class="page-body">
+      <div class="container">
+        <div class="contact-layout">
+          <div class="contact-info">
+            <article class="contact-item">
+              <div class="contact-icon" style="background:linear-gradient(135deg,#25D366,#128C7E);border-color:rgba(37,211,102,.5);display:flex;align-items:center;justify-content:center;"><svg class="whatsapp-icon" viewBox="0 0 24 24" width="22" height="22" fill="#fff" aria-hidden="true"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/></svg></div>
+              <div>
+                <h3>WhatsApp</h3>
+                <p>The fastest way to reach us for order updates and quick questions.</p>
+                <a href="https://wa.me/9779705985657" target="_blank" rel="noopener" style="color:#25D366;font-weight:700;">Chat on WhatsApp →</a>
+              </div>
+            </article>
+            <article class="contact-item">
+              <div class="contact-icon">✉️</div>
+              <div>
+                <h3>Email</h3>
+                <p>For detailed inquiries, send us an email and we'll respond within 24 hours.</p>
+                <a id="contact-email-link" href="#">support@diginepal.com</a>
+              </div>
+            </article>
+            <article class="contact-item">
+              <div class="contact-icon">📍</div>
+              <div>
+                <h3>Location</h3>
+                <p>Based in Nepal, serving digital subscription needs across the country.</p>
+                <span style="color:var(--text-muted);font-size:.82rem">Nepal</span>
+              </div>
+            </article>
+            <article class="contact-item">
+              <div class="contact-icon">🕐</div>
+              <div>
+                <h3>Business Hours</h3>
+                <p>Sun – Fri: 10:00 AM – 6:00 PM (NPT)<br>Saturday: Closed</p>
+              </div>
+            </article>
+          </div>
+
+          <div class="contact-form-wrapper">
+            <h2>Send us a message</h2>
+            <p>Fill out the form below and we'll get back to you as soon as possible.</p>
+            <form class="contact-form" id="contact-form">
+              <label>Your name <input type="text" name="name" required minlength="2" maxlength="100" placeholder="Full name"></label>
+              <label>Email address <input type="email" name="email" required placeholder="you@example.com"></label>
+              <label>Subject
+                <select name="subject">
+                  <option value="general">General inquiry</option>
+                  <option value="order">Order support</option>
+                  <option value="payment">Payment issue</option>
+                  <option value="product">Product question</option>
+                  <option value="other">Other</option>
+                </select>
+              </label>
+              <label>Your message <textarea name="message" required minlength="10" maxlength="2000" placeholder="Tell us how we can help..."></textarea></label>
+              <button class="contact-submit" type="submit">Send message <span aria-hidden="true">→</span></button>
+            </form>
+            <div id="contact-success" class="contact-success" hidden>
+              <div class="success-icon">✓</div>
+              <h3>Message sent!</h3>
+              <p>Thank you for reaching out. We'll get back to you within 24 hours.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="page-footer">
+    <div class="container">
+      <div class="page-footer-grid">
+        <div><a href="/" class="brand"><img src="logo.png" alt="Digi Nepal"><span>Digi Nepal</span></a><p>Digital tools for your next chapter.</p></div>
+        <div><h3>Explore</h3><a href="/#catalog">Subscriptions</a><a href="/#categories">Categories</a><a href="/#how-it-works">How it works</a></div>
+        <div><h3>Company</h3><a href="/about">About us</a><a href="/contact">Contact</a><a href="/admin">Administration</a></div>
+        <div><h3>Legal</h3><a href="/privacy">Privacy Policy</a><a href="/terms">Terms of Service</a><a href="/refund">Refund Policy</a></div>
+      </div>
+      <div class="page-footer-bottom"><span>© <script>document.write(new Date().getFullYear())</script> Digi Nepal</span><span>Prices shown in NPR</span></div>
+    </div>
+  </footer>
+
+  <script>
+    const form = document.getElementById('contact-form');
+    const success = document.getElementById('contact-success');
+    form.addEventListener('submit', async function(e) {
+      e.preventDefault();
+      const btn = form.querySelector('.contact-submit');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="btn-spinner"></span><span>Sending...</span>';
+      try {
+        const data = {
+          name: form.elements.name.value.trim(),
+          email: form.elements.email.value.trim(),
+          subject: form.elements.subject.value,
+          message: form.elements.message.value.trim()
+        };
+        let csrf = '';
+        try {
+          const csrfRes = await fetch('/api/auth/csrf', { credentials: 'same-origin' });
+          if (csrfRes.ok) {
+            const csrfData = await csrfRes.json();
+            csrf = csrfData.csrf || '';
+          }
+        } catch (_) {}
+
+        const res = await fetch('/api/contact', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'x-csrf-token': csrf
+          },
+          credentials: 'same-origin',
+          body: JSON.stringify(data)
+        });
+        const result = await res.json();
+        if (!res.ok) throw new Error(result.error || 'Something went wrong.');
+        form.hidden = true;
+        form.previousElementSibling.hidden = true;
+        form.parentElement.querySelector('h2').hidden = true;
+        success.hidden = false;
+      } catch (err) {
+        btn.disabled = false;
+        btn.innerHTML = 'Send message <span aria-hidden="true">→</span>';
+        const errorDiv = document.createElement('p');
+        errorDiv.className = 'contact-error';
+        errorDiv.textContent = err.message;
+        errorDiv.style.cssText = 'color:#f87171;font-size:.85rem;margin-top:.5rem;padding:.65rem .8rem;border:1px solid rgba(248,113,113,.2);border-radius:.5rem;background:rgba(248,113,113,.08);';
+        const existing = form.querySelector('.contact-error');
+        if (existing) existing.remove();
+        btn.insertAdjacentElement('afterend', errorDiv);
+      }
+    });
+    // Load contact email and WhatsApp from settings
+    fetch('/api/settings').then(r => r.json()).then(s => {
+      if (s.contact_email) {
+        const el = document.getElementById('contact-email-link');
+        el.textContent = s.contact_email;
+        el.href = 'mailto:' + s.contact_email;
+      }
+      if (s.whatsapp_number) {
+        const wa = document.querySelector('[href*="wa.me"]');
+        if (wa) wa.href = 'https://wa.me/' + s.whatsapp_number;
+      }
+    }).catch(() => {});
+  </script>
+</body>
+</html>
