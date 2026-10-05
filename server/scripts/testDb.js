@@ -1,7 +1,19 @@
+const dns = require('node:dns');
+if (!process.env.VERCEL) {
+  try { dns.setServers(['8.8.8.8', '1.1.1.1']); } catch (e) { void e; }
+}
+
 const path = require('node:path');
-require('dotenv').config({ path: path.join(__dirname, '../../.env'), quiet: true });
-const mongoose = require('mongoose');
-if (!process.env.MONGO_URI) throw new Error('Set MONGO_URI in .env before running this database connection check.');
-mongoose.connect(process.env.MONGO_URI)
-  .then(() => { console.log('Database connection succeeded.'); return mongoose.disconnect(); })
-  .catch(error => { console.error('Database connection failed:', error.message); process.exitCode = 1; });
+require('dotenv').config({ path: [path.join(__dirname, '../../.env'), path.join(__dirname, '../.env')], quiet: true });
+const connectDB = require('../config/db');
+
+connectDB()
+  .then(() => {
+    console.log('✅ Database connection succeeded.');
+    return connectDB.close();
+  })
+  .then(() => process.exit(0))
+  .catch(error => {
+    console.error('❌ Database connection failed:', error.message);
+    process.exit(1);
+  });

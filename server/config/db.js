@@ -1,5 +1,7 @@
 const dns = require('node:dns');
-try { dns.setServers(['8.8.8.8', '1.1.1.1']); } catch (e) { void e; }
+if (!process.env.VERCEL) {
+  try { dns.setServers(['8.8.8.8', '1.1.1.1']); } catch (e) { void e; }
+}
 
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
@@ -168,4 +170,6 @@ connectDB.close = async function close() {
   connecting = null;
 };
 
+connectDB.connectDatabase = connectDB;
 module.exports = connectDB;
+module.exports.connectDatabase = connectDB;

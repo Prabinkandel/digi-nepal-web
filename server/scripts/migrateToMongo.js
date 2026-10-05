@@ -1,7 +1,12 @@
-require('dotenv').config({ path: __dirname + '/../.env' });
+const dns = require('node:dns');
+if (!process.env.VERCEL) {
+  try { dns.setServers(['8.8.8.8', '1.1.1.1']); } catch (e) { void e; }
+}
+
+const path = require('node:path');
+require('dotenv').config({ path: [path.join(__dirname, '../../.env'), path.join(__dirname, '../.env')], quiet: true });
 const mongoose = require('mongoose');
 const fs = require('fs');
-const path = require('path');
 
 const connectDB = require('../config/db');
 const User = require('../models/User');
