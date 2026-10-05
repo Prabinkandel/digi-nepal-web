@@ -26,7 +26,7 @@ async function signIn(req, user, verified = false) {
   return { user: safe(user), token: csrf, csrf };
 }
 async function challenge(emailAddress, purpose, extra = {}) {
-  if (!mailer.configured()) fail(503, 'Email is not configured. Contact the site administrator.');
+  if (!await mailer.configured()) fail(503, 'Email is not configured. Contact the site administrator.');
   const code = String(randomInt(10000000, 100000000));
   await Challenge.findOneAndUpdate({ email: emailAddress, purpose }, { ...extra, code_hash: await bcrypt.hash(code, 12), expires_at: new Date(Date.now()+10*60000), attempts: 0 }, { upsert: true });
   await mailer.sendMail({ to: emailAddress, subject: purpose === 'reset' ? 'Reset your Digi Nepal password' : 'Verify your Digi Nepal email', text: 'Your verification code is ' + code + '. It expires in 10 minutes. If you did not request this, ignore this email.' });
@@ -163,7 +163,7 @@ router.post('/register', limited, async (req,res) => {
     await Audit.create({ actor_id: user.id, action: 'REGISTER', target: 'account', outcome: 'completed', status: 201 });
     return res.status(201).json({ ...await signIn(req,user), local_auto_verified: true });
   }
-  if (!mailer.configured()) fail(503,'Email is not configured. Contact the site administrator.');
+  if (!await mailer.configured()) fail(503,'Email is not configured. Contact the site administrator.');
   const hash = await bcrypt.hash(data.password,12);
   if (!await User.exists({ email: data.email })) await challenge(data.email,'register',{ name: data.name, password_hash: hash });
   res.json({ requires_otp: true, message: 'If this address can be registered, a verification code has been sent. Existing members can sign in.' });
@@ -177,7 +177,7 @@ router.post('/verify-otp', limited, async (req,res) => {
 });
 router.post('/forgot-password', limited, async (req,res) => {
   const data = z.object({ email }).strict().parse(req.body);
-  if (!mailer.configured()) fail(503,'Email is not configured. Contact the site administrator.');
+  if (!await mailer.configured()) fail(503,'Email is not configured. Contact the site administrator.');
   const user = await User.findOne({ email: data.email, is_active: 1 });
   if (user) await challenge(data.email,'reset');
   else await bcrypt.hash(randomBytes(12).toString('hex'),12);

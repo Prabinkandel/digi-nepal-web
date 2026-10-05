@@ -53,7 +53,7 @@ router.post('/',auth,limit('orders',20,3600,req=>req.user.id),async(req,res)=>{
          <p style="margin:4px 0;">Price: <strong>Rs ${Number(order.price).toLocaleString()}</strong></p>
          <p style="margin:4px 0;">Ref Code: <strong>#${refCode}</strong></p>
        </div>
-       <p><a href="http://localhost:3001/admin" style="display:inline-block;padding:10px 18px;background:#e50914;color:#fff;text-decoration:none;border-radius:6px;font-weight:bold;">Open Admin Dashboard →</a></p>
+       <p><a href="${process.env.APP_URL || ''}/admin" style="display:inline-block;padding:10px 18px;background:#e50914;color:#fff;text-decoration:none;border-radius:6px;font-weight:bold;">Open Admin Dashboard →</a></p>
      </div>`
    }).catch(()=>{});
  }

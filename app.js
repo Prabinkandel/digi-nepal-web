@@ -1,4 +1,4 @@
-if (['localhost','127.0.0.1'].includes(window.location.hostname) && window.location.port !== '3001') {
+if (['localhost','127.0.0.1'].includes(window.location.hostname) && ['5500', '5501'].includes(window.location.port)) {
   window.location.replace('http://localhost:3001' + window.location.pathname + window.location.search + window.location.hash);
 }
 const API = '/api';

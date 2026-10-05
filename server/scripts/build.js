@@ -14,4 +14,17 @@ for (const file of publicFiles) {
   const source = path.join(root, file);
   if (fs.existsSync(source)) fs.copyFileSync(source, path.join(output, file));
 }
+
+// Copy static uploads to dist if present
+const uploadsSource = path.join(root, 'uploads');
+const uploadsDest = path.join(output, 'uploads');
+if (fs.existsSync(uploadsSource)) {
+  fs.mkdirSync(uploadsDest, { recursive: true });
+  for (const item of fs.readdirSync(uploadsSource)) {
+    const srcFile = path.join(uploadsSource, item);
+    if (fs.statSync(srcFile).isFile()) {
+      fs.copyFileSync(srcFile, path.join(uploadsDest, item));
+    }
+  }
+}
 console.log('Public site build complete. Server source and private data are excluded.');

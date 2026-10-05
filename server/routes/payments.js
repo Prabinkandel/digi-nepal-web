@@ -86,7 +86,7 @@ router.post('/',auth,limit('payments',15,3600,req=>req.user.id),async(req,res)=>
          <p style="margin:4px 0;">Method: <strong>${payment.payment_method}</strong></p>
          <p style="margin:4px 0;">Txn ID: <strong>${payment.transaction_id}</strong></p>
        </div>
-       <p><a href="http://localhost:3001/admin" style="display:inline-block;padding:10px 18px;background:#e50914;color:#fff;text-decoration:none;border-radius:6px;font-weight:bold;">Verify Payment in Admin Panel →</a></p>
+       <p><a href="${process.env.APP_URL || ''}/admin" style="display:inline-block;padding:10px 18px;background:#e50914;color:#fff;text-decoration:none;border-radius:6px;font-weight:bold;">Verify Payment in Admin Panel →</a></p>
      </div>`
    }).catch(()=>{});
  }

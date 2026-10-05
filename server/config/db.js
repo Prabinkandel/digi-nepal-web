@@ -1,15 +1,20 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const { randomUUID } = require('node:crypto');
-const fs = require('node:fs');
-const path = require('node:path');
-const { MongoMemoryServer } = require('mongodb-memory-server');
 const User = require('../models/User');
 const Category = require('../models/Category');
 const Product = require('../models/Product');
 
 let connecting;
 let memoryServer;
+
+mongoose.connection.on('error', err => {
+  console.error('[MongoDB Connection Error]', err.message || err);
+});
+
+mongoose.connection.on('disconnected', () => {
+  connecting = null;
+});
 
 async function seedAdminIfNeeded() {
   const admins = [
@@ -89,9 +94,10 @@ async function healMediaPurposes() {
 }
 
 function connectDB() {
+  if (mongoose.connection.readyState === 1) return Promise.resolve(mongoose.connection);
   if (connecting) return connecting;
 
-  if (process.env.MONGO_URI) {
+  if (process.env.MONGO_URI && process.env.NODE_ENV !== 'test') {
     connecting = mongoose.connect(process.env.MONGO_URI, { serverSelectionTimeoutMS: 8000 })
       .then(async conn => {
         await seedAdminIfNeeded();
@@ -106,6 +112,21 @@ function connectDB() {
     return connecting;
   }
 
+  // Local development only — mongodb-memory-server is a devDependency
+  // and must not be loaded in production/Vercel.
+  let MongoMemoryServer;
+  try {
+    MongoMemoryServer = require('mongodb-memory-server').MongoMemoryServer;
+  } catch {
+    connecting = Promise.reject(new Error(
+      'MONGO_URI is not set and mongodb-memory-server is not available. ' +
+      'Set MONGO_URI for production or install devDependencies for local dev.'
+    ));
+    return connecting;
+  }
+
+  const fs = require('node:fs');
+  const path = require('node:path');
   const databasePath = process.env.NODE_ENV === 'test'
     ? path.join(__dirname, '../../.local-data/test-mongodb-' + process.pid)
     : path.join(__dirname, '../../.local-data/mongodb');
