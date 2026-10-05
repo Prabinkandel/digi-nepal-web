@@ -1,0 +1,62 @@
+# Digi Nepal — Cline Rules & Architecture Context
+
+You are working on Digi Nepal, a full-stack digital subscription marketplace in Nepal.
+Your goal is to be fast, accurate, and minimize token burn.
+
+## Token Saving & Behavior Rules
+1. **Never list or re-read whole directories**: Use the file map below directly.
+2. **Never search or greps blindly**: You already know where everything is from this file.
+3. **Preserve Vercel Serverless Architecture**:
+   - The filesystem on Vercel is read-only. NEVER write upload files to local disk.
+   - All media uploads are converted to WebP buffers with `sharp` and stored in the MongoDB `Media` collection.
+   - All serverless endpoints route through `api/index.js` which exports `server/server.js`.
+4. **Never break CSRF Whitelist**:
+   - Customer OTP and authentication endpoints (`/login`, `/register`, `/send-otp`, `/login-otp`, `/verify-otp`, `/forgot-password`, `/reset-password`) are CSRF-exempt. All other mutating routes require `x-csrf-token`.
+5. **Preserve DNS Configuration**:
+   - Keep `dns.setServers(['8.8.8.8', '1.1.1.1'])` at the top of `server/server.js` and `server/config/db.js` to ensure Atlas SRV resolution works across all ISPs.
+6. **Always Verify**:
+   - After code changes, run `npm run lint` and `npm test` in the terminal to verify zero regressions.
+
+---
+
+## Quick Reference File Map
+- **Server Entry**: `server/server.js` (Express app, session, security, routes, error handling)
+- **Vercel Serverless Bridge**: `api/index.js`
+- **Database Config**: `server/config/db.js` (Mongoose connection, reconnects, Atlas + memory fallback)
+- **Vercel Routing**: `vercel.json` (builds `dist/`, routes `/api/(.*)` to `api/index.js`)
+- **Build Script**: `server/scripts/build.js` (copies public files and static uploads to `dist/`)
+- **API Routes** (`server/routes/`):
+  - `auth.js` — Login, register, customer OTP send/verify, Google OAuth, password reset, MFA
+  - `products.js` — Subscription catalog CRUD & public listing
+  - `categories.js` — Product categories
+  - `orders.js` — Customer order creation, admin fulfillment, automated Gmail alerts
+  - `payments.js` — Payment proof submission (eSewa, Khalti, Bank), verification
+  - `upload.js` — Image processing via sharp, saves to MongoDB Media
+  - `media.js` — Serves images from MongoDB as WebP (`/api/media/:id`)
+  - `settings.js` — Site settings (payment QR, site name, theme, contact info)
+  - `contact.js` — Customer inquiry form & email notifications
+- **Frontend**:
+  - `index.html` — Storefront landing page
+  - `app.js` — Storefront logic (catalog, cart, checkout, OTP modal, customer orders)
+  - `admin.html` — Admin dashboard portal
+  - `admin.js` — Admin SPA logic (order approval, product management, media gallery, settings)
+  - `storefront-polish.css` — High-end dark theme styling, payment flow UI, buttons
+  - `tokens.css`, `style.css`, `pages.css`, `admin.css` — Core styles
+
+---
+
+## Commands
+```bash
+npm start            # Run local server on http://localhost:3001
+npm run build        # Build static assets into dist/
+npm test             # Run Node test suite (isolated in-memory DB)
+npm run lint         # Run ESLint (zero errors required)
+```
+
+---
+
+## Database Credentials & Collections
+- **Cluster**: `diginepal.yabfaud.mongodb.net`
+- **Database**: `diginepal`
+- **Collections**: `users`, `products`, `categories`, `orders`, `payments`, `media`, `settings`, `otps`, `challenges`, `audits`
+- **Default Admin Account**: `admin@diginepal.com` / `admin123`

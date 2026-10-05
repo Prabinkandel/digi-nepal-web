@@ -3,7 +3,7 @@ if (['localhost','127.0.0.1'].includes(window.location.hostname) && ['5500', '55
 }
 const API = '/api';
 const WHATSAPP_ICON_SVG = '<svg class="whatsapp-icon" viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/></svg>';
-const state = { user: null, csrf: localStorage.getItem('dn_csrf') || '', category: '', sort: 'newest', page: 1, searchTimer: null, searchController: null, providers: { google: false }, pendingAction: null };
+const state = { user: null, csrf: localStorage.getItem('dn_csrf') || '', category: '', categoryName: '', sort: 'newest', search: '', page: 1, total: 0, catalog: [], searchTimer: null, catalogSearchTimer: null, searchController: null, catalogController: null, providers: { google: false }, pendingAction: null };
 const $ = id => document.getElementById(id);
 const escapeHtml = value => String(value ?? '').replace(/[&<>'"]/g, char => ({ '&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;' }[char]));
 const formatMoney = amount => new Intl.NumberFormat('en-NP',{style:'currency',currency:'NPR',maximumFractionDigits:0}).format(Number(amount || 0));
@@ -66,7 +66,28 @@ function closeDialog(id) { const dialog = $(id); if (dialog && dialog.open) dial
 function toast(message, type = '') { const item = document.createElement('div'); item.className = 'toast ' + type; item.textContent = message; $('toast-region').append(item); setTimeout(() => item.remove(), 4500); }
 
 function productSkeletons(count = 8) { return Array.from({length:count}, () => '<article class="product-card skeleton"><div></div></article>').join(''); }
-function setProductLoading() { $('product-grid').innerHTML = productSkeletons(); $('catalog-empty').hidden = true; $('pagination').replaceChildren(); }
+function setProductLoading() { $('product-grid').innerHTML = productSkeletons(); $('catalog-empty').hidden = true; $('pagination').replaceChildren(); if ($('catalog-status')) $('catalog-status').innerHTML = '<span>Loading subscriptions…</span>'; }
+
+/* Pricing helpers: all values come from the live catalogue, never invented. */
+function savingsOf(product) {
+  const price = Number(product.price || 0);
+  const was = Number(product.original_price || 0);
+  if (!was || was <= price) return null;
+  return { amount: was - price, percent: Math.round(((was - price) / was) * 100) };
+}
+
+/* Reads a billing duration out of the real product name/description when the
+   merchant stated one (e.g. "Netflix 1 Month"). Nothing is shown otherwise. */
+function durationOf(product) {
+  const text = (product.name || '') + ' ' + (product.description || '');
+  const match = text.match(/(\d+)\s*[-\s]?\s*(year|years|yr|month|months|mo|week|weeks|day|days)\b/i);
+  if (!match) return /lifetime/i.test(text) ? 'Lifetime access' : '';
+  const count = Number(match[1]);
+  const unit = match[2].toLowerCase();
+  const name = unit.startsWith('y') ? 'year' : unit.startsWith('mo') || unit === 'm' ? 'month' : unit.startsWith('w') ? 'week' : 'day';
+  return count + ' ' + name + (count > 1 ? 's' : '');
+}
+
 function productVisual(product, compact = false) {
   const tone = ((product.name || '').charCodeAt(0) % 5);
   const initial = escapeHtml((product.name || '?').slice(0, 1));
@@ -81,21 +102,35 @@ function productVisual(product, compact = false) {
 
 function productCard(product) {
   const badge = product.offer_label || product.badge;
+  const saving = savingsOf(product);
+  const duration = durationOf(product);
+  const inStock = product.stock === undefined || product.stock === null || Number(product.stock) > 0;
   const benefits = (product.features || []).slice(0,3).map(feature => '<li>' + escapeHtml(feature) + '</li>').join('');
-  return '<article class="product-card">' + 
-    productVisual(product) + 
-    (badge ? '<span class="badge">' + escapeHtml(badge) + '</span>' : '') + 
-    '<p class="product-category">' + escapeHtml(product.category_name || 'DIGITAL SERVICE') + '</p>' +
-    '<h3>' + escapeHtml(product.name) + '</h3>' +
-    '<p class="product-desc">' + escapeHtml(product.description || 'View subscription details and plan information.') + '</p>' + 
-    (benefits ? '<ul class="product-benefits">' + benefits + '</ul>' : '') + 
-    '<div class="price-row"><div><small>Starting at</small><span class="price">' + formatMoney(product.price) + '</span></div>' + 
-    (product.original_price ? '<small class="was-price">' + formatMoney(product.original_price) + '</small>' : '') + 
+  const badges = [];
+  if (saving) badges.push('<span class="store-badge store-badge-save">-' + saving.percent + '%</span>');
+  if (badge) badges.push('<span class="store-badge store-badge-tag">' + escapeHtml(badge) + '</span>');
+  return '<article class="product-card">' +
+    '<div class="card-visual">' + productVisual(product) +
+      (badges.length ? '<div class="card-badges">' + badges.join('') + '</div>' : '') +
     '</div>' +
-    '<div class="product-actions">' +
-      '<button type="button" class="card-action card-view" data-product="' + escapeHtml(product.id) + '">Details</button>' +
-      '<button type="button" class="card-action card-whatsapp" data-whatsapp="' + escapeHtml(product.id) + '" aria-label="Order ' + escapeHtml(product.name) + ' via WhatsApp">' + WHATSAPP_ICON_SVG + '<span>WhatsApp</span></button>' +
-      '<button type="button" class="card-action card-buy" data-buy="' + escapeHtml(product.id) + '" title="Buy online with eSewa / Khalti / QR">Buy</button>' +
+    '<div class="card-body">' +
+      '<p class="product-category">' + escapeHtml(product.category_name || 'DIGITAL SERVICE') + '</p>' +
+      '<h3>' + escapeHtml(product.name) + '</h3>' +
+      '<p class="product-desc">' + escapeHtml(product.description || 'View subscription details and plan information.') + '</p>' +
+      (benefits ? '<ul class="product-benefits">' + benefits + '</ul>' : '') +
+      '<div class="card-meta">' +
+        (duration ? '<span class="card-meta-item">' + escapeHtml(duration) + '</span>' : '') +
+        '<span class="card-meta-stock' + (inStock ? '' : ' is-out') + '">' + (inStock ? 'Available now' : 'Currently unavailable') + '</span>' +
+      '</div>' +
+      '<div class="price-row">' +
+        '<div><small>Price</small><span class="price">' + formatMoney(product.price) + '</span></div>' +
+        (saving ? '<div class="price-compare"><small class="was-price">' + formatMoney(product.original_price) + '</small><span class="price-save">Save ' + formatMoney(saving.amount) + '</span></div>' : '') +
+      '</div>' +
+      '<div class="product-actions">' +
+        '<button type="button" class="card-action card-buy" data-buy="' + escapeHtml(product.id) + '" title="Buy online with eSewa / Khalti / QR"' + (inStock ? '' : ' disabled') + '>Buy now</button>' +
+        '<button type="button" class="card-action card-view" data-product="' + escapeHtml(product.id) + '">Details</button>' +
+        '<button type="button" class="card-action card-whatsapp" data-whatsapp="' + escapeHtml(product.id) + '" aria-label="Order ' + escapeHtml(product.name) + ' via WhatsApp">' + WHATSAPP_ICON_SVG + '<span>WhatsApp</span></button>' +
+      '</div>' +
     '</div>' +
   '</article>';
 }
@@ -104,41 +139,163 @@ async function loadProducts() {
   setProductLoading();
   const query = new URLSearchParams({ page:String(state.page), limit:'12', sort:state.sort });
   if (state.category) query.set('category',state.category);
+  if (state.search) query.set('search',state.search);
+  if (state.catalogController) state.catalogController.abort();
+  state.catalogController = new AbortController();
   try {
-    const result = await api('/products?' + query);
+    const result = await api('/products?' + query, { signal: state.catalogController.signal });
     const products = result.items || result;
+    state.catalog = products;
+    state.total = Number(result.total ?? products.length);
     $('product-grid').innerHTML = products.map(productCard).join('');
     $('catalog-empty').hidden = products.length > 0;
+    renderCatalogStatus(products.length);
+    renderDeals(products);
     renderDiscovery(products);
     renderPages(result.pages || 1);
   } catch (error) {
+    if (error.name === 'AbortError') return;
+    if ($('catalog-status')) $('catalog-status').replaceChildren();
     $('product-grid').innerHTML = '<div class="catalog-empty"><h3>Couldn’t load subscriptions.</h3><p>' + escapeHtml(error.message) + '</p><button class="button button-quiet" id="retry-products">Try again</button></div>';
     $('retry-products').onclick = loadProducts;
   }
+}
+
+function renderCatalogStatus(shown) {
+  const status = $('catalog-status');
+  if (!status) return;
+  if (!shown) { status.replaceChildren(); return; }
+  const parts = ['<span>Showing <b>' + shown + '</b> of <b>' + state.total + '</b> subscriptions</span>'];
+  if (state.categoryName) parts.push('<button type="button" class="filter-chip" data-clear="category">' + escapeHtml(state.categoryName) + ' <span aria-hidden="true">×</span></button>');
+  if (state.search) parts.push('<button type="button" class="filter-chip" data-clear="search">“' + escapeHtml(state.search) + '” <span aria-hidden="true">×</span></button>');
+  status.innerHTML = parts.join('');
+  status.querySelectorAll('[data-clear]').forEach(chip => {
+    chip.onclick = () => {
+      if (chip.dataset.clear === 'search') { state.search = ''; const field = $('catalog-search'); if (field) field.value = ''; }
+      else selectCategory('');
+      state.page = 1;
+      loadProducts();
+    };
+  });
+}
+
+/* Deals band: shows only products whose real original_price beats the sale price. */
+function renderDeals(products) {
+  const section = $('deals'); const grid = $('deals-grid');
+  if (!section || !grid) return;
+  if (state.search || state.category) { section.hidden = true; return; }
+  const deals = products.map(product => ({ product, saving: savingsOf(product) }))
+    .filter(entry => entry.saving)
+    .sort((a, b) => b.saving.percent - a.saving.percent)
+    .slice(0, 4);
+  if (!deals.length) { section.hidden = true; return; }
+  section.hidden = false;
+  grid.innerHTML = deals.map(({ product, saving }) =>
+    '<button type="button" class="deal-card" data-deal="' + escapeHtml(product.id) + '" aria-label="View ' + escapeHtml(product.name) + '">' +
+      '<div class="deal-card-top">' + dealThumb(product) +
+        '<span class="deal-card-title"><small>Save ' + saving.percent + '%</small><strong>' + escapeHtml(product.name) + '</strong></span>' +
+      '</div>' +
+      '<span class="deal-price"><b>' + formatMoney(product.price) + '</b><s>' + formatMoney(product.original_price) + '</s></span>' +
+      '<span class="deal-cta">You save ' + formatMoney(saving.amount) + '<span aria-hidden="true">→</span></span>' +
+    '</button>').join('');
+  grid.querySelectorAll('[data-deal]').forEach(button => { button.onclick = () => openProduct(button.dataset.deal); });
+}
+
+function dealThumb(product) {
+  const tone = ((product.name || '').charCodeAt(0) % 5);
+  const initial = escapeHtml((product.name || '?').slice(0, 1));
+  if (!product.image_url) return '<span class="product-monogram tone-' + tone + '" aria-hidden="true">' + initial + '</span>';
+  return '<img class="deal-thumb" src="' + escapeHtml(product.image_url) + '" alt="" loading="lazy" decoding="async" onerror="this.remove()">';
 }
 
 function renderDiscovery(products) { const rail=$('discovery-rail'); if(!rail) return; rail.innerHTML=products.map(product => '<button class="discovery-card" data-discovery-product="' + escapeHtml(product.id) + '">' + productVisual(product,true) + '<span><small>' + escapeHtml(product.category_name || 'DIGITAL SERVICE') + '</small><strong>' + escapeHtml(product.name) + '</strong><b>' + formatMoney(product.price) + '</b></span></button>').join(''); rail.querySelectorAll('[data-discovery-product]').forEach(button=>button.onclick=()=>openProduct(button.dataset.discoveryProduct)); }
 
 function renderPages(pages) { const holder = $('pagination'); holder.replaceChildren(); if (pages <= 1) return; for (let number=1; number<=pages; number++) { const button = document.createElement('button'); button.className = 'page-button' + (number === state.page ? ' active':''); button.textContent = number; button.ariaLabel = 'Page ' + number; button.onclick = () => { state.page = number; loadProducts(); document.querySelector('#catalog').scrollIntoView({behavior:'smooth'}); }; holder.append(button); } }
 
-async function loadCategories() { try { const result = await api('/categories?limit=100&sort=name'); const categories = result.items || result; const holder = $('category-tabs'); categories.forEach(category => { const button = document.createElement('button'); button.className='category'; button.dataset.category=category.id; button.setAttribute('role','tab'); button.textContent=category.name; button.onclick=() => selectCategory(category.id); holder.append(button); }); } catch { toast('Categories are temporarily unavailable.'); } }
+async function loadCategories() { try { const result = await api('/categories?limit=100&sort=name'); const categories = result.items || result; const holder = $('category-tabs'); categories.forEach(category => { const button = document.createElement('button'); button.className='category'; button.dataset.category=category.id; button.dataset.categoryName=category.name; button.setAttribute('role','tab'); button.textContent=category.name; button.onclick=() => selectCategory(category.id); holder.append(button); }); } catch { toast('Categories are temporarily unavailable.'); } }
 
-function selectCategory(category) { state.category=category; state.page=1; document.querySelectorAll('.category').forEach(button => { const active=button.dataset.category===category; button.classList.toggle('active',active); button.setAttribute('aria-selected',String(active)); }); loadProducts(); }
+function selectCategory(category) { state.category=category; state.page=1; state.categoryName=''; document.querySelectorAll('.category').forEach(button => { const active=button.dataset.category===category; if (active && category) state.categoryName = button.dataset.categoryName || button.textContent; button.classList.toggle('active',active); button.setAttribute('aria-selected',String(active)); }); loadProducts(); }
+
+function detailVisual(product) {
+  const tone = ((product.name || '').charCodeAt(0) % 5);
+  const initial = escapeHtml((product.name || '?').slice(0, 1));
+  const monogramStyle = 'width:5.5rem;height:5.5rem;font-size:2.8rem';
+  if (!product.image_url) return '<span class="product-monogram tone-' + tone + '" aria-hidden="true" style="' + monogramStyle + '">' + initial + '</span>';
+  return '<img src="' + escapeHtml(product.image_url) + '" alt="' + escapeHtml(product.name) + '" loading="eager" decoding="async" onload="this.classList.add(\'loaded\')" onerror="this.style.display=\'none\';if(this.nextElementSibling)this.nextElementSibling.style.display=\'grid\';">' +
+    '<span class="product-monogram tone-' + tone + '" aria-hidden="true" style="display:none;' + monogramStyle + '">' + initial + '</span>';
+}
+
+function detailRelated(product) {
+  const related = state.catalog.filter(item => item.id !== product.id && item.category_id === product.category_id).slice(0, 3);
+  if (!related.length) return '';
+  return '<section class="pd-block"><h2>More in ' + escapeHtml(product.category_name || 'this category') + '</h2><div class="pd-related">' +
+    related.map(item => '<button type="button" class="pd-related-card" data-related="' + escapeHtml(item.id) + '">' +
+      '<strong>' + escapeHtml(item.name) + '</strong>' +
+      '<span>' + formatMoney(item.price) + (savingsOf(item) ? '<s>' + formatMoney(item.original_price) + '</s>' : '') + '</span>' +
+    '</button>').join('') + '</div></section>';
+}
+
+function detailStaticBlocks() {
+  return '<section class="pd-block"><h2>How delivery works</h2><ol class="pd-delivery">' +
+      '<li><b>Place your order.</b> Pick WhatsApp or online payment above.</li>' +
+      '<li><b>Send your payment.</b> Use eSewa, Khalti, bank transfer or scan the QR, then upload the receipt.</li>' +
+      '<li><b>We verify it.</b> Our team confirms the payment against your order reference.</li>' +
+      '<li><b>You get your details.</b> Access details are shared once the order is approved, and the status updates in your account.</li>' +
+    '</ol></section>' +
+    '<section class="pd-block pd-faq"><h2>Common questions</h2>' +
+      '<details><summary>Which payment methods can I use?</summary><p>eSewa, Khalti, bank transfer and QR payment. You will see the available options at checkout.</p></details>' +
+      '<details><summary>How do I know my order went through?</summary><p>After you submit your payment receipt, the order appears under “My orders” with its current status. You get an update when it is approved.</p></details>' +
+      '<details><summary>Who do I contact if something is wrong?</summary><p>Message us on WhatsApp or use the contact form. Include your order reference so we can find it quickly.</p></details>' +
+    '</section>';
+}
 
 async function openProduct(id) {
   showDialog('product-dialog');
-  $('product-detail').innerHTML = '<div class="product-detail"><div class="product-detail-image skeleton"></div><div><p class="eyebrow">LOADING DETAILS</p><h1 id="product-title">Subscription</h1></div></div>';
+  $('product-detail').innerHTML = '<div class="pd-layout"><div class="pd-media"><div class="product-detail-image skeleton"></div></div><div><p class="eyebrow">LOADING DETAILS</p><h1 id="product-title">Subscription</h1></div></div>';
   try {
     const product = await api('/products/' + encodeURIComponent(id));
-    const tone = ((product.name || '').charCodeAt(0) % 5);
-    const initial = escapeHtml((product.name || '?').slice(0, 1));
-    const image = product.image_url
-      ? '<img src="' + escapeHtml(product.image_url) + '" alt="' + escapeHtml(product.name) + '" loading="eager" decoding="async" onload="this.classList.add(\'loaded\')" onerror="this.style.display=\'none\';if(this.nextElementSibling)this.nextElementSibling.style.display=\'grid\';"><span class="product-monogram tone-' + tone + '" aria-hidden="true" style="display:none;width:5.5rem;height:5.5rem;font-size:2.8rem">' + initial + '</span>'
-      : '<span class="product-monogram tone-' + tone + '" aria-hidden="true" style="width:5.5rem;height:5.5rem;font-size:2.8rem">' + initial + '</span>';
-    const features = (product.features || []).map(feature => '<li>' + escapeHtml(feature) + '</li>').join('') || '<li>Product details confirmed before processing</li><li>Order status visible from your account</li><li>Support available when needed</li>';
-    $('product-detail').innerHTML = '<div class="product-detail-image">' + image + '</div><div><p class="eyebrow">' + escapeHtml(product.category_name || 'SUBSCRIPTION') + '</p><h1 id="product-title">' + escapeHtml(product.name) + '</h1><p>' + escapeHtml(product.description || 'Review this subscription and start your order when ready.') + '</p><div class="price-row"><span class="price">' + formatMoney(product.price) + '</span>' + (product.original_price ? '<small>' + formatMoney(product.original_price) + '</small>' : '') + '</div><ul class="feature-list">' + features + '</ul><div class="product-modal-actions"><button type="button" class="button button-whatsapp" id="start-whatsapp-order" data-id="' + escapeHtml(product.id) + '">' + WHATSAPP_ICON_SVG + '<span>Order via WhatsApp</span></button><button type="button" class="button button-quiet" id="start-order" data-id="' + escapeHtml(product.id) + '">Pay Online (eSewa / Khalti / QR) <span>→</span></button></div></div>';
+    const saving = savingsOf(product);
+    const duration = durationOf(product);
+    const badge = product.offer_label || product.badge;
+    const badges = [];
+    if (saving) badges.push('<span class="store-badge store-badge-save">-' + saving.percent + '% off</span>');
+    if (badge) badges.push('<span class="store-badge store-badge-tag">' + escapeHtml(badge) + '</span>');
+    if (duration) badges.push('<span class="store-badge store-badge-plain">' + escapeHtml(duration) + '</span>');
+    const features = (product.features || []).map(feature => '<li>' + escapeHtml(feature) + '</li>').join('');
+    $('product-detail').innerHTML = '<div class="pd-layout">' +
+      '<div class="pd-media">' +
+        '<div class="product-detail-image">' + detailVisual(product) + '</div>' +
+        (badges.length ? '<div class="pd-badges">' + badges.join('') + '</div>' : '') +
+      '</div>' +
+      '<div class="pd-main">' +
+        '<div class="pd-head">' +
+          '<p class="pd-category">' + escapeHtml((product.category_name || 'SUBSCRIPTION').toUpperCase()) + '</p>' +
+          '<h1 id="product-title">' + escapeHtml(product.name) + '</h1>' +
+          '<p class="pd-summary">' + escapeHtml(product.description || 'Review this subscription and start your order when ready.') + '</p>' +
+        '</div>' +
+        '<div class="pd-price-card">' +
+          '<div class="pd-price-top">' +
+            '<span class="pd-price-main"><small>' + (duration ? escapeHtml(duration.toUpperCase()) : 'TOTAL PRICE') + '</small><b>' + formatMoney(product.price) + '</b></span>' +
+            (saving ? '<span class="pd-price-side"><s>' + formatMoney(product.original_price) + '</s><span class="price-save">You save ' + formatMoney(saving.amount) + '</span></span>' : '') +
+          '</div>' +
+          '<div class="pd-actions">' +
+            '<button type="button" class="button" id="start-order" data-id="' + escapeHtml(product.id) + '">Buy now with eSewa / Khalti / QR <span aria-hidden="true">→</span></button>' +
+            '<button type="button" class="button button-whatsapp" id="start-whatsapp-order" data-id="' + escapeHtml(product.id) + '">' + WHATSAPP_ICON_SVG + '<span>Order via WhatsApp</span></button>' +
+          '</div>' +
+          '<ul class="pd-reassure">' +
+            '<li>Pay with eSewa, Khalti, bank transfer or QR</li>' +
+            '<li>Every payment receipt is checked by our team</li>' +
+            '<li>Track the status of your order from your account</li>' +
+          '</ul>' +
+        '</div>' +
+        (features ? '<section class="pd-block"><h2>What you get</h2><ul class="feature-list">' + features + '</ul></section>' : '') +
+        detailStaticBlocks() +
+        detailRelated(product) +
+      '</div>' +
+    '</div>';
     $('start-order').onclick = () => startOrder(product.id);
     $('start-whatsapp-order').onclick = () => startWhatsAppOrder(product.id);
+    $('product-detail').querySelectorAll('[data-related]').forEach(button => { button.onclick = () => openProduct(button.dataset.related); });
   } catch (error) {
     $('product-detail').innerHTML = '<h2 id="product-title">Couldn’t load this subscription</h2><p>' + escapeHtml(error.message) + '</p>';
   }
@@ -213,6 +370,11 @@ async function openPayment(order) {
             '<button type="button" class="button-payment-qr" id="pay-opt-qr">Pay via QR Code & Upload →</button>' +
           '</div>' +
         '</div>' +
+        '<ul class="checkout-trust">' +
+          '<li>Your order reference is #' + escapeHtml(reference) + '</li>' +
+          '<li>Receipts are reviewed before approval</li>' +
+          '<li>Status updates appear under My orders</li>' +
+        '</ul>' +
       '</div>';
 
     $('pay-opt-whatsapp').onclick = () => {
@@ -665,8 +827,17 @@ function bindUI() {
   document.querySelectorAll('[data-close]').forEach(button => button.onclick = () => closeDialog(button.dataset.close));
   if ($('footer-login')) $('footer-login').onclick = () => openAuth('login');
   if ($('footer-orders')) $('footer-orders').onclick = openOrders;
-  if ($('reset-filter')) $('reset-filter').onclick = () => selectCategory('');
+  if ($('reset-filter')) $('reset-filter').onclick = () => { state.search = ''; const field = $('catalog-search'); if (field) field.value = ''; selectCategory(''); };
   if ($('product-sort')) $('product-sort').onchange = event => { state.sort = event.target.value; state.page = 1; loadProducts(); };
+  if ($('catalog-search')) {
+    const field = $('catalog-search');
+    const wrap = $('catalog-search-wrap');
+    const syncClear = () => { if (wrap) wrap.classList.toggle('has-value', field.value.length > 0); };
+    const applySearch = () => { state.search = field.value.trim(); state.page = 1; loadProducts(); };
+    field.addEventListener('input', () => { syncClear(); clearTimeout(state.catalogSearchTimer); state.catalogSearchTimer = setTimeout(applySearch, 350); });
+    field.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); clearTimeout(state.catalogSearchTimer); applySearch(); } });
+    if ($('catalog-search-clear')) $('catalog-search-clear').onclick = () => { field.value = ''; syncClear(); clearTimeout(state.catalogSearchTimer); applySearch(); field.focus(); };
+  }
   if ($('discovery-prev')) $('discovery-prev').onclick = () => $('discovery-rail').scrollBy({ left: -320, behavior: 'smooth' });
   if ($('discovery-next')) $('discovery-next').onclick = () => $('discovery-rail').scrollBy({ left: 320, behavior: 'smooth' });
   

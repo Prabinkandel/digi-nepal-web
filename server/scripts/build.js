@@ -5,7 +5,7 @@ const root = path.join(__dirname, '../..');
 const output = path.join(root, 'dist');
 const publicFiles = [
   'index.html', 'admin.html', 'about.html', 'contact.html', 'privacy.html', 'terms.html', 'refund.html',
-  'style.css', 'animations.css', 'auth.css', 'storefront-polish.css', 'payment-overrides.css', 'admin.css', 'pages.css', 'tokens.css',
+  'style.css', 'animations.css', 'auth.css', 'storefront-polish.css', 'payment-overrides.css', 'store-ui.css', 'admin.css', 'pages.css', 'tokens.css',
   'app.js', 'admin.js', 'logo.png'
 ];
 
