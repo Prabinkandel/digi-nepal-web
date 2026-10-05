@@ -1,0 +1,10 @@
+node_modules
+.local-data
+.git
+uploads
+scratch
+dist
+coverage
+*.log
+*.txt
+.vercel
