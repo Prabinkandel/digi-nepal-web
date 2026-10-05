@@ -1,13 +1,26 @@
 const { createHash, randomBytes, timingSafeEqual } = require('node:crypto');
-const { production } = require('../config/runtime');
 
 const GOOGLE_AUTHORIZE_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const GOOGLE_TOKEN_INFO_URL = 'https://oauth2.googleapis.com/tokeninfo';
 const sessionLifetime = 10 * 60 * 1000;
 
-function configured() { return Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET && (!production || process.env.APP_URL)); }
-function redirectUri(req) { return process.env.GOOGLE_REDIRECT_URI || `${process.env.APP_URL || `${req.protocol}://${req.get('host')}`}/api/auth/google/callback`; }
+function configured() {
+  return Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
+}
+
+function redirectUri(req) {
+  const host = (req && typeof req.get === 'function' ? req.get('host') : '') || 'localhost:3001';
+  const isLocalHost = host.includes('localhost') || host.includes('127.0.0.1');
+
+  if (isLocalHost && process.env.GOOGLE_REDIRECT_URI) {
+    return process.env.GOOGLE_REDIRECT_URI;
+  }
+
+  const proto = (req && req.headers && req.headers['x-forwarded-proto']) || (isLocalHost ? 'http' : 'https');
+  const base = process.env.APP_URL ? process.env.APP_URL.replace(/\/+$/, '') : `${proto}://${host}`;
+  return `${base}/api/auth/google/callback`;
+}
 function sameValue(a, b) { const left = Buffer.from(String(a)); const right = Buffer.from(String(b)); return left.length === right.length && timingSafeEqual(left, right); }
 function start(req) {
   const state = randomBytes(32).toString('base64url'); const verifier = randomBytes(48).toString('base64url');
