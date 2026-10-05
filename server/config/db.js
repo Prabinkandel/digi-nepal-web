@@ -1,3 +1,6 @@
+const dns = require('node:dns');
+try { dns.setServers(['8.8.8.8', '1.1.1.1']); } catch (e) { void e; }
+
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const { randomUUID } = require('node:crypto');

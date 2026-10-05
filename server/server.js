@@ -1,3 +1,6 @@
+const dns = require('node:dns');
+try { dns.setServers(['8.8.8.8', '1.1.1.1']); } catch (e) { void e; }
+
 const path = require('path');
 require('dotenv').config({ path: [path.join(__dirname, '../.env'), path.join(__dirname, '.env')], quiet: true });
 const express = require('express');
