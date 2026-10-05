@@ -97,6 +97,45 @@ function connectDB() {
   if (mongoose.connection.readyState === 1) return Promise.resolve(mongoose.connection);
   if (connecting) return connecting;
 
+  function startLocalMemory() {
+    let MongoMemoryServer;
+    try {
+      MongoMemoryServer = require('mongodb-memory-server').MongoMemoryServer;
+    } catch {
+      connecting = Promise.reject(new Error(
+        'MONGO_URI is not set and mongodb-memory-server is not available. ' +
+        'Set MONGO_URI for production or install devDependencies for local dev.'
+      ));
+      return connecting;
+    }
+
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const databasePath = process.env.NODE_ENV === 'test'
+      ? path.join(__dirname, '../../.local-data/test-mongodb-' + process.pid)
+      : path.join(__dirname, '../../.local-data/mongodb');
+    try { fs.mkdirSync(databasePath, { recursive: true }); } catch (e) { void e; }
+    connecting = MongoMemoryServer.create({
+      instance: { dbPath: databasePath, dbName: 'digi-nepal' }
+    })
+      .then(server => {
+        memoryServer = server;
+        return mongoose.connect(server.getUri(), { serverSelectionTimeoutMS: 8000 });
+      })
+      .then(async () => {
+        await seedAdminIfNeeded();
+        await seedCatalogIfEmpty();
+        await healMediaPurposes();
+      })
+      .catch(error => {
+        connecting = null;
+        memoryServer = null;
+        throw error;
+      });
+
+    return connecting;
+  }
+
   if (process.env.MONGO_URI && process.env.NODE_ENV !== 'test') {
     connecting = mongoose.connect(process.env.MONGO_URI, { serverSelectionTimeoutMS: 8000 })
       .then(async conn => {
@@ -107,49 +146,16 @@ function connectDB() {
       })
       .catch(error => {
         connecting = null;
+        if (process.env.NODE_ENV !== 'production') {
+          console.warn(`[MongoDB] Remote connection failed (${error.message}). Falling back to local database...`);
+          return startLocalMemory();
+        }
         throw error;
       });
     return connecting;
   }
 
-  // Local development only — mongodb-memory-server is a devDependency
-  // and must not be loaded in production/Vercel.
-  let MongoMemoryServer;
-  try {
-    MongoMemoryServer = require('mongodb-memory-server').MongoMemoryServer;
-  } catch {
-    connecting = Promise.reject(new Error(
-      'MONGO_URI is not set and mongodb-memory-server is not available. ' +
-      'Set MONGO_URI for production or install devDependencies for local dev.'
-    ));
-    return connecting;
-  }
-
-  const fs = require('node:fs');
-  const path = require('node:path');
-  const databasePath = process.env.NODE_ENV === 'test'
-    ? path.join(__dirname, '../../.local-data/test-mongodb-' + process.pid)
-    : path.join(__dirname, '../../.local-data/mongodb');
-  fs.mkdirSync(databasePath, { recursive: true });
-  connecting = MongoMemoryServer.create({
-    instance: { dbPath: databasePath, dbName: 'digi-nepal' }
-  })
-    .then(server => {
-      memoryServer = server;
-      return mongoose.connect(server.getUri(), { serverSelectionTimeoutMS: 8000 });
-    })
-    .then(async () => {
-      await seedAdminIfNeeded();
-      await seedCatalogIfEmpty();
-      await healMediaPurposes();
-    })
-    .catch(error => {
-      connecting = null;
-      memoryServer = null;
-      throw error;
-    });
-
-  return connecting;
+  return startLocalMemory();
 }
 
 connectDB.close = async function close() {
