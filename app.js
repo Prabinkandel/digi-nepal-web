@@ -860,7 +860,32 @@ async function loadSettings() {
 }
 
 function bindUI() {
-  if ($('menu-button')) $('menu-button').onclick = () => { const nav = document.querySelector('.nav-shell'), expanded = nav.classList.toggle('menu-open'); $('menu-button').setAttribute('aria-expanded', String(expanded)); };
+  const menuBtn = $('menu-button');
+  const navShell = document.querySelector('.nav-shell');
+  if (menuBtn && navShell) {
+    const closeMenu = () => {
+      navShell.classList.remove('menu-open');
+      menuBtn.setAttribute('aria-expanded', 'false');
+    };
+    menuBtn.onclick = (e) => {
+      e.stopPropagation();
+      const expanded = navShell.classList.toggle('menu-open');
+      menuBtn.setAttribute('aria-expanded', String(expanded));
+    };
+    document.querySelectorAll('.nav-links a').forEach(a => {
+      a.addEventListener('click', closeMenu);
+    });
+    document.addEventListener('click', (e) => {
+      if (navShell.classList.contains('menu-open') && !navShell.contains(e.target)) {
+        closeMenu();
+      }
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && navShell.classList.contains('menu-open')) {
+        closeMenu();
+      }
+    });
+  }
   document.querySelectorAll('[data-close]').forEach(button => button.onclick = () => closeDialog(button.dataset.close));
   if ($('footer-login')) $('footer-login').onclick = () => openAuth('login');
   if ($('footer-orders')) $('footer-orders').onclick = openOrders;
