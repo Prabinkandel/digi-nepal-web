@@ -460,21 +460,15 @@ function renderAccount() {
     logout.onclick = logoutUser;
     holder.append(orders, logout);
   } else {
-    const googleBtn = document.createElement('a');
-    googleBtn.className = 'nav-google-btn';
-    googleBtn.href = '/api/auth/google/start';
-    googleBtn.title = 'Sign in directly with Google';
-    googleBtn.innerHTML = GOOGLE_ICON_SVG + '<span>Sign in with Google</span>';
-    googleBtn.onclick = () => {
-      if (state.pendingAction) {
-        try { sessionStorage.setItem('dn_pending_action', JSON.stringify(state.pendingAction)); } catch (e) { void e; }
-      }
-    };
     const loginButton = document.createElement('button');
     loginButton.className = 'nav-login';
-    loginButton.textContent = 'Email';
+    loginButton.textContent = 'Login';
     loginButton.onclick = () => openAuth('login');
-    holder.append(googleBtn, loginButton);
+    const signupButton = document.createElement('button');
+    signupButton.className = 'nav-signup';
+    signupButton.textContent = 'Sign up';
+    signupButton.onclick = () => openAuth('signup');
+    holder.append(loginButton, signupButton);
   }
 }
 
@@ -531,10 +525,9 @@ function openAuth(mode = 'login', data = {}) {
   showDialog('auth-dialog');
   const email = escapeHtml(data.email || '');
   if (mode === 'signup') {
-    const googleBtnHtml = '<a class="auth-google auth-google-prominent" href="/api/auth/google/start" id="auth-google-signup">' +
+    const googleBtnHtml = '<a class="auth-google-direct" href="/api/auth/google/start" id="auth-google-signup">' +
       GOOGLE_ICON_SVG +
-      '<span>Sign up directly with Google</span>' +
-      '<span class="auth-badge-fast">Instant</span>' +
+      '<span>Sign up with Google</span>' +
     '</a>';
     $('auth-content').innerHTML = authFrame('CREATE ACCOUNT', 'Create your account', 'A simple account keeps your orders, payment updates, and subscriptions in one secure place.', googleBtnHtml + '<div class="auth-divider"><span>or register with email</span></div><form class="auth-form" id="signup-form"><label class="auth-field">Full name<input name="name" type="text" autocomplete="name" required maxlength="100"></label><label class="auth-field">Email address<input name="email" type="email" autocomplete="email" required></label>' + passwordField('password', 'Password', 'new-password', true) + passwordField('confirmPassword', 'Confirm password', 'new-password', true) + '<p class="password-help" id="password-help">Use 12 to 72 characters with upper- and lower-case letters, a number, and a symbol.</p><p class="auth-alert" id="auth-error" role="alert" hidden></p><button class="auth-primary" type="submit"><span>Create account</span><span aria-hidden="true">→</span></button></form><p class="auth-switch">Already have an account? <button type="button" data-auth-mode="login">Sign in</button></p>');
     $('signup-form').onsubmit = register;
@@ -556,14 +549,25 @@ function openAuth(mode = 'login', data = {}) {
     $('auth-content').innerHTML = authFrame('TWO-STEP VERIFICATION', 'Confirm it’s you', 'Enter the code from your authenticator app or a recovery code to continue.', '<form class="auth-form" id="mfa-form"><label class="auth-field">Authentication code<input name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="16" required autofocus></label><p class="auth-alert" id="auth-error" role="alert" hidden></p><button class="auth-primary" type="submit"><span>Verify and sign in</span><span aria-hidden="true">→</span></button></form><p class="auth-switch"><button type="button" data-auth-mode="login">Use a different account</button></p>');
     $('mfa-form').onsubmit = event => login(event, data);
   } else if (mode === 'gmail-otp') {
-    $('auth-content').innerHTML = authFrame('GMAIL VERIFICATION', 'Login with Gmail OTP', 'Enter your email address to receive a instant 6-digit OTP code directly in your inbox.', '<form class="auth-form" id="gmail-otp-form"><label class="auth-field">Email address<div style="display:flex;gap:8px;"><input name="email" id="gmail-otp-email" type="email" autocomplete="email" value="' + email + '" required placeholder="yourname@gmail.com" style="flex:1;" autofocus><button type="button" class="card-action card-buy" id="send-gmail-otp-btn" style="white-space:nowrap;padding:.5rem .9rem;font-size:.78rem;min-height:auto;">Send OTP</button></div></label><label class="auth-field">6-digit Gmail OTP code<input name="otp" id="gmail-otp-code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" placeholder="123456" required></label><p class="auth-alert" id="auth-error" role="alert" hidden></p><button class="auth-primary" type="submit"><span>Verify OTP & Sign in</span><span aria-hidden="true">→</span></button></form><p class="auth-switch">Prefer password sign in? <button type="button" data-auth-mode="login">Password Login</button></p>');
+    const googleBtnHtml = '<a class="auth-google-direct" href="/api/auth/google/start" id="auth-google-otp">' +
+      GOOGLE_ICON_SVG +
+      '<span>Sign in with Google</span>' +
+    '</a>';
+    $('auth-content').innerHTML = authFrame('GMAIL VERIFICATION', 'Login with Gmail OTP', 'Enter your email address to receive a instant 6-digit OTP code directly in your inbox.', googleBtnHtml + '<div class="auth-divider"><span>or use 6-digit OTP code</span></div><form class="auth-form" id="gmail-otp-form"><label class="auth-field">Email address<div style="display:flex;gap:8px;"><input name="email" id="gmail-otp-email" type="email" autocomplete="email" value="' + email + '" required placeholder="yourname@gmail.com" style="flex:1;" autofocus><button type="button" class="card-action card-buy" id="send-gmail-otp-btn" style="white-space:nowrap;padding:.5rem .9rem;font-size:.78rem;min-height:auto;">Send OTP</button></div></label><label class="auth-field">6-digit Gmail OTP code<input name="otp" id="gmail-otp-code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" placeholder="123456" required></label><p class="auth-alert" id="auth-error" role="alert" hidden></p><button class="auth-primary" type="submit"><span>Verify OTP & Sign in</span><span aria-hidden="true">→</span></button></form><p class="auth-switch">Prefer password sign in? <button type="button" data-auth-mode="login">Password Login</button></p>');
     $('gmail-otp-form').onsubmit = verifyGmailOtp;
     $('send-gmail-otp-btn').onclick = sendGmailOtp;
+    const directG = $('auth-google-otp');
+    if (directG) {
+      directG.onclick = () => {
+        if (state.pendingAction) {
+          try { sessionStorage.setItem('dn_pending_action', JSON.stringify(state.pendingAction)); } catch (e) { void e; }
+        }
+      };
+    }
   } else {
-    const googleBtnHtml = '<a class="auth-google auth-google-prominent" href="/api/auth/google/start" id="auth-google-direct">' +
+    const googleBtnHtml = '<a class="auth-google-direct" href="/api/auth/google/start" id="auth-google-direct">' +
       GOOGLE_ICON_SVG +
-      '<span>Continue directly with Google</span>' +
-      '<span class="auth-badge-fast">1-Click</span>' +
+      '<span>Sign in with Google</span>' +
     '</a>';
     $('auth-content').innerHTML = authFrame('ACCOUNT ACCESS', 'Welcome back', 'Sign in to manage your subscriptions, orders, and account.', googleBtnHtml + '<div class="auth-divider"><span>or sign in with email</span></div><form class="auth-form" id="login-form"><label class="auth-field">Email address<input name="email" type="email" autocomplete="email" value="' + email + '" required autofocus></label>' + passwordField('password', 'Password', 'current-password') + '<div class="auth-options"><button type="button" class="auth-link" data-auth-mode="gmail-otp" style="font-weight:700;color:var(--red-bright);">📧 Login with Gmail OTP</button><button type="button" class="auth-link" data-auth-mode="forgot">Forgot password?</button></div><p class="auth-alert" id="auth-error" role="alert" hidden></p><button class="auth-primary" type="submit"><span>Sign in</span><span aria-hidden="true">→</span></button></form><p class="auth-switch">New to Digi Nepal? <button type="button" data-auth-mode="signup">Create account</button></p>');
     $('login-form').onsubmit = login;
