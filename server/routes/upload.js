@@ -1,5 +1,7 @@
 const router = require('express').Router();
-const multer = require('multer'), sharp = require('sharp');
+const multer = require('multer');
+let sharp;
+try { sharp = require('sharp'); } catch (e) { void e; }
 const { randomUUID } = require('node:crypto');
 const auth = require('../middleware/auth'), access = require('../middleware/access'), limit = require('../middleware/limits');
 const Media = require('../models/Media');
@@ -20,13 +22,17 @@ router.post('/', auth, limit('uploads', 60, 3600, req => req.user.id), upload.si
   }
 
   const file = req.file;
-  let output;
-  try {
-    const pipeline = sharp(file.buffer, { limitInputPixels: 50000000, failOn: 'none' });
-    output = await pipeline.rotate().resize({ width: 2000, height: 2000, fit: 'inside', withoutEnlargement: true }).webp({ quality: 90 }).toBuffer();
-  } catch (err) {
-    console.error('[UPLOAD ERROR]', err);
-    fail(400, 'The image file could not be processed. Please use a standard PNG, JPG, or WebP photo.');
+  let output = file.buffer;
+  let mime = file.mimetype || 'image/jpeg';
+
+  if (sharp) {
+    try {
+      const pipeline = sharp(file.buffer, { limitInputPixels: 50000000, failOn: 'none' });
+      output = await pipeline.rotate().resize({ width: 2000, height: 2000, fit: 'inside', withoutEnlargement: true }).webp({ quality: 90 }).toBuffer();
+      mime = 'image/webp';
+    } catch (err) {
+      console.warn('[UPLOAD SHARP FALLBACK]', err.message);
+    }
   }
 
   const media = await Media.create({
@@ -35,7 +41,7 @@ router.post('/', auth, limit('uploads', 60, 3600, req => req.user.id), upload.si
     purpose,
     name: String(file.originalname).replace(/[^a-zA-Z0-9 ._-]/g, '').slice(0, 100) || 'Image',
     data: output,
-    mime: 'image/webp',
+    mime,
     size: output.length
   });
 

@@ -42,5 +42,8 @@
     "globals": "latest",
     "mongodb-memory-server": "latest",
     "supertest": "latest"
+  },
+  "optionalDependencies": {
+    "@img/sharp-linux-x64": "0.33.5"
   }
 }
