@@ -133,7 +133,7 @@ async function renderProducts(){
         </div>
       </div>
       <div style="overflow-x:auto"><table>
-        <thead><tr><th>Product</th><th>Category</th><th>Price</th><th>Badge</th><th>Status</th><th>Actions</th></tr></thead>
+        <thead><tr><th>Product</th><th>Category</th><th>Duration</th><th>Price</th><th>Badge</th><th>Status</th><th>Actions</th></tr></thead>
         <tbody id="prod-tbody">${renderProductRows(products,catMap)}</tbody>
       </table></div>
     </div>`;
@@ -154,7 +154,7 @@ async function renderProducts(){
 }
 
 function renderProductRows(products,catMap){
-  if(!products.length)return`<tr class="empty-row"><td colspan="6">No products found</td></tr>`;
+  if(!products.length)return`<tr class="empty-row"><td colspan="7">No products found</td></tr>`;
   return products.map(p=>`
     <tr data-id="${p.id}">
       <td><div style="display:flex;align-items:center;gap:10px">
@@ -162,8 +162,9 @@ function renderProductRows(products,catMap){
         <div><div class="td-name">${p.name}</div><div class="td-sub">${fmt(p.price)}</div></div>
       </div></td>
       <td>${catMap[p.category_id]?.name||'-'}</td>
+      <td>${p.duration?`<span class="badge badge-active" style="font-size:.72rem;padding:.15rem .45rem">${p.duration}</span>`:'—'}</td>
       <td>${fmt(p.price)}${p.original_price?`<br/><span style="color:var(--text3);text-decoration:line-through;font-size:.8rem">${fmt(p.original_price)}</span>`:''}</td>
-      <td>${p.badge?`<span class="badge badge-${p.badge==='sale'?'pending':p.badge==='popular'?'verified':'active'}">${p.badge}</span>`:'—'}</td>
+      <td>${p.badge?`<span class="badge badge-${p.badge==='sale'?'pending':p.badge==='popular'||p.badge==='hot'?'verified':'active'}">${p.badge}</span>`:'—'}</td>
       <td><span class="badge ${p.is_active?'badge-active':'badge-inactive'}">${p.is_active?'Active':'Hidden'}</span></td>
       <td><div class="td-actions">
         <button class="btn-outline btn-sm edit-prod" data-id="${p.id}">Edit</button>
@@ -201,9 +202,18 @@ function openProductForm(p,cats){
       <div class="form-group"><label>Badge</label>
         <select id="f-badge">
           <option value="">None</option>
-          ${['sale','popular','cheap','lifetime'].map(b=>`<option value="${b}" ${p?.badge===b?'selected':''}>${b}</option>`).join('')}
+          ${['sale','popular','hot','cheap','new'].map(b=>`<option value="${b}" ${p?.badge===b?'selected':''}>${b}</option>`).join('')}
         </select>
       </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Validity / Duration</label>
+        <select id="f-duration">
+          <option value="">Not specified</option>
+          ${['1 Month','2 Months','3 Months','6 Months','1 Year','2 Years','Lifetime'].map(d=>`<option value="${d}" ${p?.duration===d?'selected':''}>${d}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group"><label>Stock (blank = unlimited)</label><input id="f-stock" type="number" placeholder="Leave blank for unlimited" value="${p?.stock!=null?p.stock:''}"/></div>
     </div>
     <div class="form-row">
       <div class="form-group"><label>Rating</label><input id="f-rating" type="number" step="0.1" min="1" max="5" value="${p?.rating||4.8}"/></div>
@@ -268,9 +278,12 @@ function openProductForm(p,cats){
       }
       
       const featsArr=$('f-feats').value.split('\n').map(x=>x.trim()).filter(Boolean);
+      const stockVal = $('f-stock').value.trim();
       const body={name, category_id:catId, price,
         original_price:+$('f-orig').value||null,
         badge:$('f-badge').value||'',
+        duration:$('f-duration').value||null,
+        stock: stockVal !== '' ? +stockVal : null,
         description:$('f-desc').value,features:featsArr,image_url:imgUrl,
         is_active: p ? p.is_active : 1, sort_order: +$('f-sort').value || 0};
         

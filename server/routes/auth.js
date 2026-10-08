@@ -143,7 +143,9 @@ router.get('/google/callback', limit('google-callback', 12, 900), async (req,res
     if (user.mfa_enabled) fail(403, 'Use your password to sign in because two-step verification is enabled for this account.');
     await Audit.create({ actor_id: user.id, action: 'GOOGLE_SIGN_IN', target: 'account', outcome: 'completed', status: 200 });
     await signIn(req, user); res.redirect('/?auth=google');
-  } catch (error) { next(error); }
+  } catch (error) {
+    return res.redirect('/?auth=google-failed&message=' + encodeURIComponent(error.message || 'Google sign-in could not be completed'));
+  }
 });
 router.post('/login', limited, async (req,res) => {
   const data = credentials.parse(req.body);

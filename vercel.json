@@ -42,6 +42,14 @@
     {
       "source": "/refund",
       "destination": "/refund.html"
+    },
+    {
+      "source": "/robots.txt",
+      "destination": "/robots.txt"
+    },
+    {
+      "source": "/sitemap.xml",
+      "destination": "/sitemap.xml"
     }
   ],
   "headers": [

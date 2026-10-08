@@ -56,7 +56,7 @@ if (process.env.NODE_ENV === 'production' || process.env.VERCEL) app.set('trust 
 app.disable('x-powered-by');
 app.use(helmet({
   contentSecurityPolicy: { directives: {
-    defaultSrc: ["'self'"], scriptSrc: ["'self'"], styleSrc: ["'self'", 'https://fonts.googleapis.com'],
+    defaultSrc: ["'self'"], scriptSrc: ["'self'"], styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
     fontSrc: ["'self'", 'https://fonts.gstatic.com'], imgSrc: ["'self'", 'https:', 'data:'], connectSrc: ["'self'"],
     objectSrc: ["'none'"], baseUri: ["'none'"], formAction: ["'self'"], frameAncestors: ["'none'"]
   }},
@@ -124,10 +124,23 @@ app.use('/api', (req, res, next) => {
   next();
 });
 
-// Serve uploaded images
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
-// Serve frontend static files
-app.use(express.static(path.join(__dirname, '..')));
+// Serve uploaded images with short cache
+app.use('/uploads', express.static(path.join(__dirname, '../uploads'), {
+  maxAge: '7d', immutable: false
+}));
+// Serve static assets with long cache (CSS, JS, images, fonts, SVG)
+app.use(express.static(path.join(__dirname, '..'), {
+  setHeaders(res, filePath) {
+    const ext = filePath.split('.').pop().toLowerCase();
+    if (['svg','png','jpg','jpeg','webp','gif','woff','woff2','ttf','ico'].includes(ext)) {
+      res.set('Cache-Control', 'public, max-age=604800, stale-while-revalidate=86400'); // 7 days for images/fonts
+    } else if (['css','js'].includes(ext)) {
+      res.set('Cache-Control', 'no-cache'); // always revalidate CSS/JS so edits are live
+    } else if (ext === 'html') {
+      res.set('Cache-Control', 'no-cache');
+    }
+  }
+}));
 
 // ── ROUTES ────────────────────────────────────────────────────────────────────
 // Authentication requests establish a session; all other state-changing API calls require a per-session CSRF token.
@@ -156,6 +169,10 @@ const staticPages = { '/about': 'about.html', '/contact': 'contact.html', '/priv
 for (const [route, file] of Object.entries(staticPages)) {
   app.get(route, (req, res) => res.sendFile(path.join(__dirname, '..', file)));
 }
+
+// ── SEO FILES ─────────────────────────────────────────────────────────────────
+app.get('/robots.txt', (req, res) => res.sendFile(path.join(__dirname, '..', 'robots.txt')));
+app.get('/sitemap.xml', (req, res) => res.sendFile(path.join(__dirname, '..', 'sitemap.xml')));
 
 // Keep API failures machine-readable and avoid exposing stack traces or internals.
 app.use((error, req, res, next) => {

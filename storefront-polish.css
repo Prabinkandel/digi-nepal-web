@@ -137,18 +137,12 @@
   object-fit: contain;
   filter: drop-shadow(0 6px 14px rgba(0,0,0,0.55));
   image-rendering: -webkit-optimize-contrast;
-  opacity: 0;
-  transform: scale(0.96);
-  transition: opacity 0.35s cubic-bezier(0.16, 1, 0.3, 1), transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
-  will-change: opacity, transform;
-}
-
-.product-image img.loaded {
   opacity: 1;
   transform: scale(1);
+  transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.product-card:hover .product-image img.loaded {
+.product-card:hover .product-image img {
   transform: scale(1.06);
 }
 
@@ -183,14 +177,9 @@
   height: auto;
   object-fit: contain;
   filter: drop-shadow(0 8px 22px rgba(0,0,0,0.6));
-  opacity: 0;
-  transform: scale(0.95);
-  transition: opacity 0.35s cubic-bezier(0.16, 1, 0.3, 1), transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.product-detail-image img.loaded {
   opacity: 1;
   transform: scale(1);
+  transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 /* Delivered status — distinct green vs verified blue */

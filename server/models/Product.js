@@ -11,6 +11,8 @@ const productSchema = new mongoose.Schema({
   image_url: { type: String, default: null },
   description: { type: String, default: '' },
   features: { type: [String], default: [] },
+  duration: { type: String, default: null }, // e.g. '1 Month', '3 Months', '6 Months', '1 Year', 'Lifetime'
+  stock: { type: Number, default: null },
   rating: { type: Number, default: 4.8 },
   is_active: { type: Number, default: 1 },
   sort_order: { type: Number, default: 0 },
