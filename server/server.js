@@ -6,6 +6,28 @@ if (!process.env.VERCEL) {
 const path = require('path');
 require('dotenv').config({ path: [path.join(__dirname, '../.env'), path.join(__dirname, '.env')], quiet: true });
 const express = require('express');
+
+// Patch Express 4 router layer to catch unhandled async errors and pass them to error middleware
+try {
+  const Layer = require('express/lib/router/layer');
+  const originalHandleRequest = Layer.prototype.handle_request;
+  Layer.prototype.handle_request = function (req, res, next) {
+    const fn = this.handle;
+    if (fn.length > 3) return originalHandleRequest.apply(this, arguments);
+    try {
+      const result = fn(req, res, next);
+      if (result && typeof result.catch === 'function') {
+        result.catch(next);
+      }
+      return result;
+    } catch (err) {
+      return next(err);
+    }
+  };
+} catch (e) {
+  void e;
+}
+
 const session = require('express-session');
 const helmet = require('helmet');
 const { csrfSynchronisedProtection } = require('./middleware/csrf');
@@ -177,10 +199,18 @@ app.get('/sitemap.xml', (req, res) => res.sendFile(path.join(__dirname, '..', 's
 // Keep API failures machine-readable and avoid exposing stack traces or internals.
 app.use((error, req, res, next) => {
   if (res.headersSent) return next(error);
-  if (req.path.startsWith('/api/')) {
-    const status = Number.isInteger(error.status) && error.status >= 400 && error.status < 600 ? error.status : 500;
-    if (status === 500) console.error('[API 500 ERROR]', req.method, req.path, error);
-    return res.status(status).json({ error: status === 500 ? 'Something went wrong. Please try again.' : error.message });
+  const isApi = (req.path && req.path.startsWith('/api/')) ||
+                (req.originalUrl && req.originalUrl.startsWith('/api/')) ||
+                (req.baseUrl && req.baseUrl.startsWith('/api'));
+  if (isApi) {
+    const status = Number.isInteger(error.status) && error.status >= 400 && error.status < 600
+      ? error.status
+      : (error.name === 'ZodError' ? 400 : 500);
+    const message = error.name === 'ZodError' && error.errors?.[0]?.message
+      ? error.errors[0].message
+      : (status === 500 ? 'Something went wrong. Please try again.' : (error.message || 'Request failed.'));
+    if (status === 500) console.error('[API 500 ERROR]', req.method, req.originalUrl || req.path, error);
+    return res.status(status).json({ error: message });
   }
   return next(error);
 });

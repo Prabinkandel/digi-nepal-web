@@ -147,15 +147,19 @@ router.get('/google/callback', limit('google-callback', 12, 900), async (req,res
     return res.redirect('/?auth=google-failed&message=' + encodeURIComponent(error.message || 'Google sign-in could not be completed'));
   }
 });
-router.post('/login', limited, async (req,res) => {
-  const data = credentials.parse(req.body);
-  const user = await User.findOne({ email: data.email }).select('+mfa_secret +recovery_codes');
-  const valid = await bcrypt.compare(data.password, user?.password || dummyHash);
-  if (!valid || !user || user.is_active !== 1) fail(401, 'Invalid email or password.');
-  if (user.mfa_enabled && !data.code) return res.status(200).json({ requires_mfa: true });
-  if (user.mfa_enabled && !await mfa.verify(user, data.code)) fail(401, 'Invalid or already used verification code.');
-  await Audit.create({ actor_id: user.id, action: 'SIGN_IN', target: 'account', outcome: 'completed', status: 200 });
-  res.json(await signIn(req,user,user.mfa_enabled));
+router.post('/login', limited, async (req, res, next) => {
+  try {
+    const data = credentials.parse(req.body);
+    const user = await User.findOne({ email: data.email }).select('+mfa_secret +recovery_codes');
+    const valid = await bcrypt.compare(data.password, user?.password || dummyHash);
+    if (!valid || !user || user.is_active !== 1) fail(401, 'Invalid email or password.');
+    if (user.mfa_enabled && !data.code) return res.status(200).json({ requires_mfa: true });
+    if (user.mfa_enabled && !await mfa.verify(user, data.code)) fail(401, 'Invalid or already used verification code.');
+    await Audit.create({ actor_id: user.id, action: 'SIGN_IN', target: 'account', outcome: 'completed', status: 200 });
+    res.json(await signIn(req, user, user.mfa_enabled));
+  } catch (err) {
+    next(err);
+  }
 });
 router.post('/register', limited, async (req,res) => {
   const data = z.object({ name: text(100).min(2), email, password }).strict().parse(req.body);

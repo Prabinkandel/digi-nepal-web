@@ -34,6 +34,19 @@ async function fetchCsrfToken() {
   return '';
 }
 
+function getErrorMessage(data, fallback = 'Something went wrong. Please try again.') {
+  if (!data) return fallback;
+  if (typeof data === 'string') return data === '[object Object]' ? fallback : data;
+  if (typeof data.error === 'string') return data.error;
+  if (data.error && typeof data.error.message === 'string') return data.error.message;
+  if (typeof data.message === 'string') return data.message;
+  if (Array.isArray(data.errors) && data.errors[0]) {
+    const first = data.errors[0];
+    return typeof first === 'string' ? first : (first.message || fallback);
+  }
+  return fallback;
+}
+
 async function api(path, options = {}) {
   const headers = { Accept:'application/json', ...(options.headers || {}) };
   if (options.body && !(options.body instanceof FormData)) headers['Content-Type'] = 'application/json';
@@ -47,17 +60,18 @@ async function api(path, options = {}) {
   const payload = response.headers.get('content-type')?.includes('application/json') ? await response.json() : {};
   
   if (!response.ok) {
-    if (response.status === 403 && payload.error && payload.error.toLowerCase().includes('csrf')) {
+    const errMsg = getErrorMessage(payload);
+    if (response.status === 403 && errMsg.toLowerCase().includes('csrf')) {
       const newToken = await fetchCsrfToken();
       if (newToken) {
         headers['x-csrf-token'] = newToken;
         const retryRes = await fetch(API + path, { credentials:'same-origin', ...options, headers });
         const retryPayload = retryRes.headers.get('content-type')?.includes('application/json') ? await retryRes.json() : {};
-        if (!retryRes.ok) throw new Error(retryPayload.error || 'Something went wrong. Please try again.');
+        if (!retryRes.ok) throw new Error(getErrorMessage(retryPayload));
         return retryPayload;
       }
     }
-    throw new Error(payload.error || 'Something went wrong. Please try again.');
+    throw new Error(errMsg);
   }
   return payload;
 }
@@ -922,7 +936,14 @@ function authFrame(eyebrow, title, description, body) {
   return '<div class="auth-shell"><aside class="auth-aside" aria-hidden="true"><img src="logo.png" alt=""><div><p class="auth-kicker">DIGI NEPAL ACCOUNT</p><h3>Premium access,<br>kept simple.</h3><p>Manage orders, payment updates, and subscriptions from one protected place.</p></div><span class="auth-aside-mark">Trusted digital subscriptions</span></aside><section class="auth-panel"><p class="eyebrow">' + eyebrow + '</p><h2 id="auth-title">' + title + '</h2><p class="auth-description">' + description + '</p>' + body + '</section></div>';
 }
 
-function authAlert(message) { const alert = $('auth-error'); if (alert) { alert.textContent = message; alert.hidden = false; } }
+function authAlert(message) {
+  const alert = $('auth-error');
+  if (alert) {
+    let text = getErrorMessage(message, 'Invalid email or password.');
+    alert.textContent = text;
+    alert.hidden = false;
+  }
+}
 function passwordField(name, label, autocomplete, strong = false) { return '<label class="auth-field">' + label + '<span class="password-input"><input name="' + name + '" type="password" autocomplete="' + autocomplete + '" required ' + (strong ? 'minlength="12" maxlength="72" aria-describedby="password-help"' : 'maxlength="256"') + '><button class="password-toggle" type="button" data-password-toggle="' + name + '" aria-label="Show ' + label.toLowerCase() + '">Show</button></span></label>'; }
 
 function setupPasswordToggles() {

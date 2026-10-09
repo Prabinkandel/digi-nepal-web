@@ -5,6 +5,19 @@ const $=id=>document.getElementById(id);
 const fmt=n=>`Rs ${Number(n).toLocaleString()}`;
 
 const list=result=>Array.isArray(result)?result:(result.items||[]);
+function getErrorMessage(data, fallback = 'Error') {
+  if (!data) return fallback;
+  if (typeof data === 'string') return data === '[object Object]' ? fallback : data;
+  if (typeof data.error === 'string') return data.error;
+  if (data.error && typeof data.error.message === 'string') return data.error.message;
+  if (typeof data.message === 'string') return data.message;
+  if (Array.isArray(data.errors) && data.errors[0]) {
+    const first = data.errors[0];
+    return typeof first === 'string' ? first : (first.message || fallback);
+  }
+  return fallback;
+}
+
 async function api(path,opts={}){
   const h={Accept:'application/json'};
   if(opts.body && !(opts.body instanceof FormData))h['Content-Type']='application/json';
@@ -14,7 +27,7 @@ async function api(path,opts={}){
   const contentType = r.headers.get('content-type');
   if (contentType && contentType.includes('application/json')) {
     const d = await r.json();
-    if(!r.ok) throw new Error(d.error || 'Error');
+    if(!r.ok) throw new Error(getErrorMessage(d));
     return d;
   } else {
     const text = await r.text();
